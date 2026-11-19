@@ -1,5 +1,5 @@
 # Library versions for every module.
-# compileSdk / minSdk / targetSdk are not here: build-logic's HearthSdk is the
+# compileSdk / minSdk / targetSdk are not here: build-logic's GallerySdk is the
 # single place those are set (36 / 30 / 36). Keep the Android Gradle Plugin and
 # Kotlin versions below in sync with build-logic/build.gradle.kts.
 

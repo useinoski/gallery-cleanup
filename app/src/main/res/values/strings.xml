@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Hearth</string>
+    <string name="app_name">Gallery Cleanup</string>
 
     <string name="privacy_promise">Your photos never leave your phone. No account, no uploads.</string>
     <string name="onboarding_title">Your photos stay here</string>
-    <string name="onboarding_body">Hearth will flag photos, videos, and audio you may want to remove. You decide what happens to each one: leave it, move it to a locked folder, or send it to the system trash. This version only counts what you allow it to see. Nothing is deleted.</string>
+    <string name="onboarding_body">Gallery Cleanup will flag photos, videos, and audio you may want to remove. You decide what happens to each one: leave it, move it to a locked folder, or send it to the system trash. This version only counts what you allow it to see. Nothing is deleted.</string>
     <string name="onboarding_no_account">No account</string>
     <string name="onboarding_no_uploads">No uploads</string>
     <string name="onboarding_no_analytics">No analytics</string>
     <string name="onboarding_continue">Continue</string>
 
     <string name="permission_title">Count what is on this phone</string>
-    <string name="permission_body">Hearth needs permission to read photos and videos. You can allow the whole library, only the items you pick, or none. Audio stays off until you turn it on from the home screen. Nothing is uploaded.</string>
+    <string name="permission_body">Gallery Cleanup needs permission to read photos and videos. You can allow the whole library, only the items you pick, or none. Audio stays off until you turn it on from the home screen. Nothing is uploaded.</string>
     <string name="permission_allow">Allow photos and videos</string>
-    <string name="permission_blocked">Photo and video access is blocked. Hearth cannot count anything until you allow it in Settings. Nothing is uploaded either way.</string>
+    <string name="permission_blocked">Photo and video access is blocked. Gallery Cleanup cannot count anything until you allow it in Settings. Nothing is uploaded either way.</string>
     <string name="open_settings">Open Settings</string>
 
     <string name="home_title">On this phone</string>
     <string name="home_footer">Nothing is removed yet. When review is ready, you choose for each item.</string>
     <string name="counting">Counting…</string>
     <string name="try_again">Try again</string>
-    <string name="read_error">Hearth could not read the library on this phone.</string>
+    <string name="read_error">Gallery Cleanup could not read the library on this phone.</string>
     <string name="loading_title">Checking what you have allowed</string>
 
     <string name="label_photos">Photos</string>
@@ -42,7 +42,7 @@
 
     <string name="audio_prompt">Turn on audio scanning</string>
     <string name="audio_help">Music and other audio are counted on this phone only, and only after you turn this on.</string>
-    <string name="audio_blocked">Audio access is blocked. You can allow it in Settings. Hearth still will not upload anything.</string>
+    <string name="audio_blocked">Audio access is blocked. You can allow it in Settings. Gallery Cleanup still will not upload anything.</string>
     <string name="audio_need_photos">On Android 11 and 12, audio uses the same storage permission as photos. Allow photos and videos first, then turn audio scanning on.</string>
     <string name="audio_split">%1$,d music · %2$,d other</string>
 </resources>

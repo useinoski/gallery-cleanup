@@ -1,12 +1,12 @@
 plugins {
-    id("hearth.android-application")
+    id("gallery.android-application")
 }
 
 android {
-    namespace = "app.hearth"
+    namespace = "com.useinoski.gallerycleanup"
 
     defaultConfig {
-        applicationId = "app.hearth"
+        applicationId = "com.useinoski.gallerycleanup"
         versionCode = 1
         versionName = "0.1.0"
     }
@@ -66,7 +66,7 @@ listOf("debug", "release").forEach { variant ->
                     error(
                         "Merged manifest ${manifest.path} contains forbidden permissions: " +
                             found.joinToString() +
-                            ". Hearth must not ship INTERNET, ACCESS_NETWORK_STATE, " +
+                            ". Gallery Cleanup must not ship INTERNET, ACCESS_NETWORK_STATE, " +
                             "MANAGE_EXTERNAL_STORAGE, or MANAGE_MEDIA.",
                     )
                 }

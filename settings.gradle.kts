@@ -15,7 +15,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Hearth"
+rootProject.name = "gallery-cleanup"
 
 include(
     ":app",

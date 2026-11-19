@@ -1,5 +1,5 @@
 plugins {
-    id("hearth.kotlin-jvm")
+    id("gallery.kotlin-jvm")
 }
 
 dependencies {

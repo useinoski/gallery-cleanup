@@ -1,6 +1,6 @@
-# Hearth
+# Gallery Cleanup
 
-Hearth is a privacy-first gallery cleanup app for Android. It counts the photos, videos, and audio already on the phone, and later it will flag items the user may want to remove. The user decides, per item, whether to keep it, move it to a locked folder, or send it to the system trash.
+Gallery Cleanup is a privacy-first gallery cleanup app for Android. It counts the photos, videos, and audio already on the phone, and later it will flag items the user may want to remove. The user decides, per item, whether to keep it, move it to a locked folder, or send it to the system trash.
 
 Nothing is uploaded. There is no account, no backend, and no analytics. The app does not declare a usable `INTERNET` permission.
 
@@ -38,7 +38,7 @@ The debug build also installs with Android Studio's Run button. The first screen
 
 ## Manifest guard
 
-Hearth must not ship these permissions, even if a later library tries to add them:
+Gallery Cleanup must not ship these permissions, even if a later library tries to add them:
 
 - `android.permission.INTERNET`
 - `android.permission.ACCESS_NETWORK_STATE`
@@ -79,7 +79,7 @@ Auto Backup is off (`android:allowBackup="false"`). `res/xml/backup_rules.xml` a
 
 `:core:media` is the only module that talks to `MediaStore`. The interface is `MediaRepository`: `count` for the home screen, and `page` for the week 2 scan. New detectors and the Room database should not grow their own queries.
 
-SDK levels are set once, in `build-logic/src/main/kotlin/app/hearth/convention/HearthSdk.kt`: `minSdk` 30, `compileSdk` 36, `targetSdk` 36. Every Android module applies `hearth.android-application` or `hearth.android-library`. Versions of libraries live in `gradle/libs.versions.toml`.
+SDK levels are set once, in `build-logic/src/main/kotlin/com/useinoski/gallerycleanup/convention/GallerySdk.kt`: `minSdk` 30, `compileSdk` 36, `targetSdk` 36. Every Android module applies `gallery.android-application` or `gallery.android-library`. Versions of libraries live in `gradle/libs.versions.toml`.
 
 ## Permission behavior
 

@@ -1,7 +1,7 @@
 plugins {
-    id("hearth.android-library")
+    id("gallery.android-library")
 }
 
 android {
-    namespace = "app.hearth.data"
+    namespace = "com.useinoski.gallerycleanup.data"
 }

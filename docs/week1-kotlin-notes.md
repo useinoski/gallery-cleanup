@@ -1,15 +1,15 @@
 # Week 1, for a Java developer
 
-Hearth is a small Android app written in Kotlin and Jetpack Compose. This note walks through the Kotlin that will feel new if you have been writing Java, and then the Android decisions: why the minimum SDK is 30, why we compile and target 36, and how partial photo access actually works.
+Gallery Cleanup is a small Android app written in Kotlin and Jetpack Compose. This note walks through the Kotlin that will feel new if you have been writing Java, and then the Android decisions: why the minimum SDK is 30, why we compile and target 36, and how partial photo access actually works.
 
 The code to open beside this note:
 
-- `core/model/src/main/kotlin/app/hearth/model/PermissionState.kt`
-- `core/media/src/main/kotlin/app/hearth/media/PermissionStatusResolver.kt`
-- `core/media/src/main/kotlin/app/hearth/media/MediaStoreMediaRepository.kt`
-- `app/src/main/java/app/hearth/ui/home/HomeViewModel.kt`
-- `app/src/main/java/app/hearth/ui/home/HomeScreen.kt`
-- `app/src/main/java/app/hearth/ui/HearthApp.kt`
+- `core/model/src/main/kotlin/com/useinoski/gallerycleanup/model/PermissionState.kt`
+- `core/media/src/main/kotlin/com/useinoski/gallerycleanup/media/PermissionStatusResolver.kt`
+- `core/media/src/main/kotlin/com/useinoski/gallerycleanup/media/MediaStoreMediaRepository.kt`
+- `app/src/main/java/com/useinoski/gallerycleanup/ui/home/HomeViewModel.kt`
+- `app/src/main/java/com/useinoski/gallerycleanup/ui/home/HomeScreen.kt`
+- `app/src/main/java/com/useinoski/gallerycleanup/ui/GalleryApp.kt`
 
 ## 1. `val` and `var`
 
@@ -69,7 +69,7 @@ In Java you would use an enum for this, and an enum would also be fine today, be
 
 `data object Full` is a singleton with value equality. `PermissionState.Full == PermissionState.Full` is true. Think of it as an enum constant that is also a real class.
 
-`LibraryAccess` groups the three states. `HearthDestination` is a `sealed interface` rather than a sealed class: same closed set, but the types share no constructor. `Loading` and `Onboarding` are objects. `Home` and `Permission` are data classes that carry the `LibraryAccess` they were decided from, so the screen does not take a nullable grant and then assert it.
+`LibraryAccess` groups the three states. `GalleryDestination` is a `sealed interface` rather than a sealed class: same closed set, but the types share no constructor. `Loading` and `Onboarding` are objects. `Home` and `Permission` are data classes that carry the `LibraryAccess` they were decided from, so the screen does not take a nullable grant and then assert it.
 
 `AudioScanRequest` is the same pattern for the audio button: ask for a permission, just remember the opt-in, send the user to Settings, or tell them that Android 11 needs the photo grant first.
 
@@ -114,7 +114,7 @@ A `@Composable` function is a function the Compose compiler rewrites so it can b
 
 You cannot call a composable from an ordinary function. The compiler enforces that. You also should not do work with side effects directly in the body, such as launching a permission dialog during composition. A dialog during composition would reappear on every redraw. Dialogs and permission requests belong in click lambdas, which run when the user taps, not when the function is recomposed.
 
-`rememberLauncherForActivityResult` in `HearthApp` is the exception that proves the rule. It has to be called during composition, on every pass, and not from inside `if` or a click listener. That is the same constraint as `registerForActivityResult` in an Activity: you register it in `onCreate`, unconditionally, and you only `launch` it later. Registering from a click crashes or drops the registration.
+`rememberLauncherForActivityResult` in `GalleryApp` is the exception that proves the rule. It has to be called during composition, on every pass, and not from inside `if` or a click listener. That is the same constraint as `registerForActivityResult` in an Activity: you register it in `onCreate`, unconditionally, and you only `launch` it later. Registering from a click crashes or drops the registration.
 
 ## 6. State hoisting
 
@@ -122,9 +122,9 @@ You cannot call a composable from an ordinary function. The compiler enforces th
 
 That is the same split as a dumb View plus a controller, with one difference: the composable is both the view and a pure function of its parameters. The Compose test builds a `LibraryAccess` that says "partial" and checks that **Select more** and **Allow all** are on screen. No phone, no permission dialog, no content resolver.
 
-`HearthApp` is the caller that owns the wiring. It reads the ViewModel, reads the device through `DevicePermissionReader`, and passes lambdas down. `OnboardingScreen` does not know that a permission system exists. Its only job is to show the promise and report that the user tapped Continue.
+`GalleryApp` is the caller that owns the wiring. It reads the ViewModel, reads the device through `DevicePermissionReader`, and passes lambdas down. `OnboardingScreen` does not know that a permission system exists. Its only job is to show the promise and report that the user tapped Continue.
 
-The destination decision is another pure function, `hearthDestination`, tested in `HearthDestinationTest`. Onboarding wins until the promise is accepted. After that, home is shown only when photos or videos can actually be read. A missing snapshot is a loading screen, not a permission prompt, so we never flash the system dialog while we are still reading the current grant.
+The destination decision is another pure function, `galleryDestination`, tested in `GalleryDestinationTest`. Onboarding wins until the promise is accepted. After that, home is shown only when photos or videos can actually be read. A missing snapshot is a loading screen, not a permission prompt, so we never flash the system dialog while we are still reading the current grant.
 
 ## 7. ViewModel
 
@@ -148,7 +148,7 @@ The cost is that Android 10 devices cannot install it. That is accepted. Support
 
 `minSdk` is the oldest phone. `targetSdk` is the behavior contract: the system applies the rules of that API level to the app. `compileSdk` is the SDK the compiler checks against.
 
-Play requires API 36 for new apps as of 31 August 2026, so `targetSdk` is 36. `compileSdk` is 36 as well, not 37. Compiling against a newer SDK would let a dependency call APIs this app has not decided to adopt, and the current Compose release (BOM `2026.11`, Compose 1.13) refuses to compile unless `compileSdk` is 37.1. We stay on Compose BOM `2026.06.01` (Compose 1.11), which still builds against API 36. The levels live in one object, `HearthSdk`, under `build-logic` (not in a directory named `build`, which the Android gitignore would hide). The convention plugins apply them to every Android module so a new module cannot drift.
+Play requires API 36 for new apps as of 31 August 2026, so `targetSdk` is 36. `compileSdk` is 36 as well, not 37. Compiling against a newer SDK would let a dependency call APIs this app has not decided to adopt, and the current Compose release (BOM `2026.11`, Compose 1.13) refuses to compile unless `compileSdk` is 37.1. We stay on Compose BOM `2026.06.01` (Compose 1.11), which still builds against API 36. The levels live in one object, `GallerySdk`, under `build-logic` (not in a directory named `build`, which the Android gitignore would hide). The convention plugins apply them to every Android module so a new module cannot drift.
 
 Targeting 36 also turns on the Android 16 photo-picker detail: if the user chooses a partial selection, photos this app itself created are preselected and the user can deselect them. We do not special-case that. We re-read the grant and we query MediaStore, which returns whatever the selection currently is.
 
@@ -162,11 +162,11 @@ The system dialog offers Allow all, Select photos and videos, and Don't allow. I
 - `READ_MEDIA_VISUAL_USER_SELECTED` **is** granted
 - MediaStore queries succeed but return only the selected rows
 
-If the app does not declare `READ_MEDIA_VISUAL_USER_SELECTED`, Android runs a compatibility mode: the full permission looks granted for the session, and it is taken away later. The app then thinks it can see the whole library. Hearth declares the permission and treats "full permission missing, selected permission granted" as `PermissionState.Partial`. That check happens before the "permanently denied" check, because a partial grant also leaves the full permission denied and often reports no rationale, which is exactly the shape of a permanent denial.
+If the app does not declare `READ_MEDIA_VISUAL_USER_SELECTED`, Android runs a compatibility mode: the full permission looks granted for the session, and it is taken away later. The app then thinks it can see the whole library. Gallery Cleanup declares the permission and treats "full permission missing, selected permission granted" as `PermissionState.Partial`. That check happens before the "permanently denied" check, because a partial grant also leaves the full permission denied and often reports no rationale, which is exactly the shape of a permanent denial.
 
 `PermissionStatusResolver` is a pure function of the SDK integer, the set of granted permission names, whether rationale should be shown, and whether we have asked before. The tests in `PermissionStatusResolverTest` cover API 30–32, 33, and 34–36 without a device. `DevicePermissionReader` is the thin Android adapter: it asks `ContextCompat.checkSelfPermission` and passes the sets in. The decision does not live in the adapter.
 
-"Never asked" and "permanently denied" both make `shouldShowRequestPermissionRationale` return false. The difference is whether we have shown the dialog before. That fact is stored in `SharedPreferences` under `asked_permissions`. The grant itself is not stored. Android can revoke a grant while the process is alive (permission reset, the user visiting Settings), so `HearthApp` calls `refresh` on every resume with a newly read snapshot. The official guidance says not to cache the grant. We don't.
+"Never asked" and "permanently denied" both make `shouldShowRequestPermissionRationale` return false. The difference is whether we have shown the dialog before. That fact is stored in `SharedPreferences` under `asked_permissions`. The grant itself is not stored. Android can revoke a grant while the process is alive (permission reset, the user visiting Settings), so `GalleryApp` calls `refresh` on every resume with a newly read snapshot. The official guidance says not to cache the grant. We don't.
 
 What the user can do from a partial state:
 

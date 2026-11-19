@@ -1,9 +1,9 @@
 plugins {
-    id("hearth.android-library")
+    id("gallery.android-library")
 }
 
 android {
-    namespace = "app.hearth.media"
+    namespace = "com.useinoski.gallerycleanup.media"
 }
 
 dependencies {
