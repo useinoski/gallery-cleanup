@@ -1,0 +1,7 @@
+# Names that must not survive the manifest merge as a granted permission.
+# The app manifest removes each of these with tools:node="remove".
+# :app:checkDebugMergedManifest fails if any of them still appear.
+android.permission.INTERNET
+android.permission.ACCESS_NETWORK_STATE
+android.permission.MANAGE_EXTERNAL_STORAGE
+android.permission.MANAGE_MEDIA
