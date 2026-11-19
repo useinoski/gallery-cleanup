@@ -148,7 +148,7 @@ The cost is that Android 10 devices cannot install it. That is accepted. Support
 
 `minSdk` is the oldest phone. `targetSdk` is the behavior contract: the system applies the rules of that API level to the app. `compileSdk` is the SDK the compiler checks against.
 
-Play requires API 36 for new apps as of 31 August 2026, so `targetSdk` is 36. `compileSdk` is 36 as well, not 37. Compiling against a newer SDK would let a dependency call APIs this app has not decided to adopt, and the current Compose release (BOM `2026.11`, Compose 1.13) refuses to compile unless `compileSdk` is 37.1. We stay on Compose BOM `2026.06.01` (Compose 1.11), which still builds against API 36. The levels live in one object, `HearthSdk`, and the convention plugins apply them to every Android module so a new module cannot drift.
+Play requires API 36 for new apps as of 31 August 2026, so `targetSdk` is 36. `compileSdk` is 36 as well, not 37. Compiling against a newer SDK would let a dependency call APIs this app has not decided to adopt, and the current Compose release (BOM `2026.11`, Compose 1.13) refuses to compile unless `compileSdk` is 37.1. We stay on Compose BOM `2026.06.01` (Compose 1.11), which still builds against API 36. The levels live in one object, `HearthSdk`, under `build-logic` (not in a directory named `build`, which the Android gitignore would hide). The convention plugins apply them to every Android module so a new module cannot drift.
 
 Targeting 36 also turns on the Android 16 photo-picker detail: if the user chooses a partial selection, photos this app itself created are preselected and the user can deselect them. We do not special-case that. We re-read the grant and we query MediaStore, which returns whatever the selection currently is.
 

@@ -79,7 +79,7 @@ Auto Backup is off (`android:allowBackup="false"`). `res/xml/backup_rules.xml` a
 
 `:core:media` is the only module that talks to `MediaStore`. The interface is `MediaRepository`: `count` for the home screen, and `page` for the week 2 scan. New detectors and the Room database should not grow their own queries.
 
-SDK levels are set once, in `build-logic` (`HearthSdk`): `minSdk` 30, `compileSdk` 36, `targetSdk` 36. Every Android module applies `hearth.android-application` or `hearth.android-library`. Versions of libraries live in `gradle/libs.versions.toml`.
+SDK levels are set once, in `build-logic/src/main/kotlin/app/hearth/convention/HearthSdk.kt`: `minSdk` 30, `compileSdk` 36, `targetSdk` 36. Every Android module applies `hearth.android-application` or `hearth.android-library`. Versions of libraries live in `gradle/libs.versions.toml`.
 
 ## Permission behavior
 

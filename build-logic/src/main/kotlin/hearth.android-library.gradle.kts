@@ -1,4 +1,4 @@
-import app.hearth.build.HearthSdk
+import app.hearth.convention.HearthSdk
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
