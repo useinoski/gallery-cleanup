@@ -12,7 +12,15 @@ data class ReadableMedia(
     val images: Boolean,
     val videos: Boolean,
     val audio: Boolean,
-)
+) {
+    fun allows(type: MediaType): Boolean = when (type) {
+        MediaType.Image -> images
+        MediaType.Video -> videos
+        MediaType.Audio -> audio
+    }
+
+    fun any(): Boolean = images || videos || audio
+}
 
 data class MediaCounts(
     val images: Int?,
@@ -47,4 +55,22 @@ interface MediaRepository {
     suspend fun count(readable: ReadableMedia): MediaCounts
 
     suspend fun page(request: MediaPageRequest): MediaPage
+
+    /**
+     * One keyset page for the library scan.
+     * [ScanPageRequest.limit] must be positive. Rows are newest `DATE_MODIFIED`
+     * first, then `_ID`. The scan walks this instead of [page], because an
+     * offset moves when a newer photo arrives while the scan is running.
+     */
+    suspend fun scanPage(request: ScanPageRequest): ScanPage
+
+    /** How many rows [scanPage] will visit for this filter, ignoring the cursor. */
+    suspend fun countScan(request: ScanCountRequest): Int
+
+    /**
+     * Ids currently visible in MediaStore for one collection, `_ID` ascending.
+     * Not generation-filtered: the scan diffs this against the store to find
+     * rows that disappeared. [IdPageRequest.limit] must be positive.
+     */
+    suspend fun pageIds(request: IdPageRequest): IdPage
 }

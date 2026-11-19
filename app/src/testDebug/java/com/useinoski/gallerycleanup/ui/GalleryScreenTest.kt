@@ -9,7 +9,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.useinoski.gallerycleanup.media.MediaCounts
 import com.useinoski.gallerycleanup.model.LibraryAccess
+import com.useinoski.gallerycleanup.model.MediaType
 import com.useinoski.gallerycleanup.model.PermissionState
+import com.useinoski.gallerycleanup.model.ScanPhase
+import com.useinoski.gallerycleanup.model.ScanProgress
+import com.useinoski.gallerycleanup.model.ScanRun
+import com.useinoski.gallerycleanup.model.TypeProgress
 import com.useinoski.gallerycleanup.ui.home.HomeScreen
 import com.useinoski.gallerycleanup.ui.onboarding.OnboardingScreen
 import com.useinoski.gallerycleanup.ui.permission.PermissionGate
@@ -63,6 +68,9 @@ class GalleryScreenTest {
                     onTurnOnAudio = {},
                     onOpenSettings = {},
                     onRetry = {},
+                    scan = ScanProgress.from(ScanRun.IDLE),
+                    onStartScan = {},
+                    onCancelScan = {},
                 )
             }
         }
@@ -118,10 +126,90 @@ class GalleryScreenTest {
                     onTurnOnAudio = {},
                     onOpenSettings = {},
                     onRetry = {},
+                    scan = ScanProgress.from(ScanRun.IDLE),
+                    onStartScan = {},
+                    onCancelScan = {},
                 )
             }
         }
         compose.onNodeWithText("30 music · 6 other").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("Turn on audio scanning").assertCountEquals(0)
+    }
+
+    @Test
+    fun runningScanShowsProgressPerTypeAndCancel() {
+        var cancelled = false
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Full,
+                        videos = PermissionState.Full,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = 40, videos = 2, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress(
+                        phase = ScanPhase.Running,
+                        byType = listOf(
+                            TypeProgress(MediaType.Image, scanned = 4, total = 10),
+                            TypeProgress(MediaType.Video, scanned = 0, total = 2),
+                        ),
+                        detail = null,
+                    ),
+                    onStartScan = {},
+                    onCancelScan = { cancelled = true },
+                )
+            }
+        }
+        compose.onNodeWithText("4 of 12").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Photos · 4 of 10").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Videos · 0 of 2").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Cancel scan").performScrollTo().performClick()
+        assertTrue(cancelled)
+    }
+
+    @Test
+    fun idleScanStartsAndAFinishedScanOffersAnotherPass() {
+        var started = 0
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Full,
+                        videos = PermissionState.Denied,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = 1, videos = null, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress.from(ScanRun.IDLE),
+                    onStartScan = { started += 1 },
+                    onCancelScan = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Start scan").performScrollTo().performClick()
+        assertTrue(started == 1)
+        compose.onAllNodesWithText("Cancel scan").assertCountEquals(0)
     }
 }

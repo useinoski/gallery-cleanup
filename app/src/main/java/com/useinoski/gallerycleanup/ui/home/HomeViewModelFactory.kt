@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.useinoski.gallerycleanup.media.MediaStoreMediaRepository
 import com.useinoski.gallerycleanup.prefs.GALLERY_PREFS
 import com.useinoski.gallerycleanup.prefs.GalleryPreferences
+import com.useinoski.gallerycleanup.scan.WorkManagerScanControls
 
 fun homeViewModelFactory(context: Context): ViewModelProvider.Factory {
     val appContext = context.applicationContext
@@ -21,6 +22,7 @@ fun homeViewModelFactory(context: Context): ViewModelProvider.Factory {
                     repository = repository,
                     onboardingStore = preferences,
                     audioScanStore = preferences,
+                    scans = WorkManagerScanControls(appContext),
                 ) as T
             }
             error("Unknown ViewModel: $modelClass")
