@@ -26,6 +26,10 @@ litert = "1.4.2"
 mlkitFace = "16.1.7"
 mlkitImageLabeling = "17.0.9"
 androidxTest = "1.7.0"
+# KSP builds must match the Kotlin version above. 2.2.21-2.0.5 is the KSP release for Kotlin 2.2.21.
+ksp = "2.2.21-2.0.5"
+# room-ktx was merged into room-runtime in Room 2.7. Do not add that artifact.
+room = "2.8.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -54,3 +58,5 @@ litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "
 litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litert" }
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFace" }
 mlkit-image-labeling = { group = "com.google.mlkit", name = "image-labeling", version.ref = "mlkitImageLabeling" }
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }

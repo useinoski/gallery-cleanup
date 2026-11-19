@@ -64,7 +64,7 @@ Auto Backup is off (`android:allowBackup="false"`). `res/xml/backup_rules.xml` a
 | `:app` | Dev 1 | Activity, theme, onboarding, permission screens, home counts, scan controls |
 | `:core:model` | Dev 1 | Shared types, including the `ScanStore` contract the scan writes through |
 | `:core:media` | Dev 1 | Permission rules, MediaStore paging, and the library scanner |
-| `:core:data` | Dev 2 | Empty. Room implementation of `ScanStore` goes here |
+| `:core:data` | Dev 2 | Room `ScanStore`, plus review rows for keep / trash. The app still binds the in-memory store |
 | `:feature:review` | Dev 2 | Empty. Review UI, trash, keep, and the locked folder go here |
 | `:detection` | ML specialist | Detector contract only. No model yet |
 
@@ -96,7 +96,7 @@ Google Play's photo and video policy allows broad library access for a gallery m
 ## What is left for later
 
 - Deletion, trash, and the locked folder (`:feature:review`)
-- The Room implementation of `ScanStore` (`:core:data`). The app currently binds an in-memory stand-in so the scan runs without that module. It does not survive process death; the Room store will, and the worker already resumes from whatever `ScanStore` it is given.
+- Pointing `ScanRuntime.store()` at `roomScanResultStore` (`:core:data`). That class implements `ScanStore` and survives process death. The app still binds the in-memory stand-in, which does not. The worker already resumes from whatever `ScanStore` it is given.
 - ML Kit (`:detection`). When it is added, use the bundled artifacts `com.google.mlkit:face-detection` and `com.google.mlkit:image-labeling`. Do not use `com.google.android.gms:play-services-mlkit-*`. The scan calls `ScanBatchObserver`, which is a no-op until a detector is bound there.
 
 The scan notes for a Java developer are in [docs/week2-kotlin-notes.md](docs/week2-kotlin-notes.md).
