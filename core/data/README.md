@@ -6,17 +6,31 @@ Room database of scan results. One row per library file. The row holds the Media
 
 Nothing here opens a socket. Do not add `INTERNET`, a sync adapter, or a backup agent. The app manifest already sets `allowBackup="false"` and excludes the database domain. Leave that alone.
 
-The shared scan contract is `ScanStore` in `:core:model` (PR #2, not merged). This module does not declare a second one. `RoomScanResultStore` is the Room implementation side. It will implement `ScanStore` once that type is on `main`. Until then the scan worker keeps `InMemoryScanStore` and does not bind this class.
-
-What `RoomScanResultStore` stores today is the review row: category, score, and keep / trash. The review screen calls it. Callers do not touch `ScanResultDao` or `GalleryDatabase`.
+`RoomScanResultStore` implements `ScanStore` from `:core:model`. It also keeps the review rows (category, score, keep / trash). This module does not declare a second scan interface. Callers do not touch `ScanResultDao`, `ScanStoreDao`, or `GalleryDatabase`.
 
 ```kotlin
 fun roomScanResultStore(context: Context): RoomScanResultStore
 ```
 
-Nothing in `:app` depends on this module yet. There is no Hilt. After `RoomScanResultStore` implements `ScanStore` and uses `model.MediaKey`, the `:app` owner swaps `ScanRuntime.store()` to this factory.
+Nothing in `:app` depends on this module yet. There is no Hilt. `ScanRuntime.store()` still returns `InMemoryScanStore`. After this lands, the `:app` owner can swap that binding to `roomScanResultStore(context)`, because the returned object is a `ScanStore`.
 
-## Table `scan_results` (version 1)
+Keys are `model.MediaKey` (`type`, then `id`). There is no `data.MediaKey`. The review table still uses the columns `media_store_id` and `media_type`.
+
+## Tables
+
+Version 1 is `scan_results` only. Version 2 adds the scan tables and does not rewrite `scan_results`. `MIGRATION_1_2` is the path. Schema JSON for both versions is checked in under `schemas/` because `exportSchema = true`. Do not enable destructive migration. Kept rows have to survive a schema change.
+
+| Table | Role |
+| --- | --- |
+| `scan_results` | One review row per file: category, score, keep / trash. Unchanged since version 1. |
+| `media_item` | One `MediaItem` per file. `removed` is 1 when MediaStore no longer returns it. |
+| `scan_checkpoint` | At most one row (`singleton` = 1). The keyset cursor for the pass in progress. |
+| `scan_run` | At most one row. Phase, version, generation, detail. A missing row is `ScanRun.IDLE`. |
+| `scan_type_progress` | One row per collection in the current run. `position` is the list order the worker wrote. |
+
+`scan_type_progress.position` is not in the interface's suggested `CREATE TABLE`. SQLite will not promise insert order on a later read, and `ScanRun.byType` is ordered. The suggested `CHECK (singleton = 1)` is also absent: a Room entity cannot declare it. The store always writes primary key 1.
+
+## Table `scan_results`
 
 | Column | Meaning |
 | --- | --- |
@@ -28,17 +42,15 @@ Nothing in `:app` depends on this module yet. There is no Hilt. After `RoomScanR
 | `scanned_at_epoch_millis` | When the scan wrote the row, not the file's date. |
 | `review_status` | `Pending`, `Kept`, or `Trashed`. |
 
-Schema JSON is checked in under `schemas/` because `exportSchema = true`. A later migration test should read those files. Do not enable destructive migration. Kept rows have to survive a schema change.
-
 `Video` and `Audio` as categories are review buckets. `MediaType` is the file type. A video of a person can be stored as category `People`. The caller chooses one category before `upsert`.
 
 Memes and chat-folder images are not their own category yet. File them under `Screenshot` until a category is added.
 
 ## Scan worker
 
-Do not point the worker at `RoomScanResultStore`. Its interface is `ScanStore`: upsert `MediaItem`s, mark rows MediaStore no longer returns, save one checkpoint, save the run, and observe progress. The KDoc on that interface is the spec, including the suggested `media_item`, `scan_checkpoint`, `scan_run`, and `scan_type_progress` tables. `InMemoryScanStore` is the stand-in until this module implements the interface.
+`RoomScanResultStore` is a `ScanStore`: `upsertBatch`, `markRemoved`, `presentKeys`, one checkpoint, one run, and `observeProgress`. The KDoc on `ScanStore` is the spec. `:app` has not switched `ScanRuntime.store()` over yet, so a running build still uses `InMemoryScanStore`.
 
-`data.MediaKey` (`mediaStoreId`, `mediaType`) is not `model.MediaKey` (`type`, `id`). The Room code will switch to the model key when it implements `ScanStore`.
+`markRemoved` flags a `media_item` row. It does not delete the file, and it does not delete the review row. `remove` is the review method, and it runs only after `createTrashRequest` succeeds.
 
 ## What the review screen calls
 

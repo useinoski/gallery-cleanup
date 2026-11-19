@@ -2,6 +2,7 @@ package com.useinoski.gallerycleanup.data
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -181,8 +182,8 @@ class RoomScanResultStoreTest {
                 sample(id = 6, category = ScanCategory.People),
             ),
         )
-        store.markKept(listOf(MediaKey(2, MediaType.Image)))
-        store.markTrashed(listOf(MediaKey(5, MediaType.Audio)))
+        store.markKept(listOf(MediaKey(MediaType.Image, 2)))
+        store.markTrashed(listOf(MediaKey(MediaType.Audio, 5)))
 
         val counts = store.observePendingCounts().first()
         assertEquals(1, counts[ScanCategory.Screenshot])
@@ -206,7 +207,7 @@ class RoomScanResultStoreTest {
                 sample(id = 3, scannedAtEpochMillis = 20),
             ),
         )
-        store.markKept(listOf(MediaKey(3, MediaType.Image)))
+        store.markKept(listOf(MediaKey(MediaType.Image, 3)))
         val shown = store.observePending(ScanCategory.Screenshot).first()
         assertEquals(listOf(2L, 1L), shown.map { it.mediaStoreId })
     }
@@ -234,7 +235,7 @@ class RoomScanResultStoreTest {
     @Test
     fun missingKeysAndEmptyUpdatesAreIgnored() = runBlocking {
         store.markKept(emptyList())
-        store.markTrashed(listOf(MediaKey(99, MediaType.Audio)))
+        store.markTrashed(listOf(MediaKey(MediaType.Audio, 99)))
         store.remove(emptyList())
         store.resetReviewed()
         assertTrue(store.keptKeys().isEmpty())

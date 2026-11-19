@@ -1,5 +1,6 @@
 package com.useinoski.gallerycleanup.data
 
+import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -10,14 +11,14 @@ class ScanResultTest {
     @Test
     fun keyPairsTheIdWithTheLibrary() {
         val result = sample(id = 5, type = MediaType.Image)
-        assertEquals(MediaKey(5, MediaType.Image), result.key)
+        assertEquals(MediaKey(MediaType.Image, 5), result.key)
     }
 
     @Test
     fun theSameIdInTwoLibrariesIsTwoKeys() {
         assertNotEquals(
-            MediaKey(5, MediaType.Image),
-            MediaKey(5, MediaType.Video),
+            MediaKey(MediaType.Image, 5),
+            MediaKey(MediaType.Video, 5),
         )
     }
 

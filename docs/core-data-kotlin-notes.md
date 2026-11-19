@@ -14,28 +14,30 @@ Open these files beside it:
 
 `ScanResult` and `MediaKey` are data classes. The compiler writes `equals`, `hashCode`, `toString`, and `copy` from the constructor properties. In Java you would write those by hand, or let the IDE generate them, and then they would drift.
 
+`MediaKey` lives in `:core:model`, next to `ScanStore`. The review row still stores the two columns `media_store_id` and `media_type`. The Kotlin value puts the type first:
+
 ```kotlin
 data class MediaKey(
-    val mediaStoreId: Long,
-    val mediaType: MediaType,
+    val type: MediaType,
+    val id: Long,
 )
 ```
 
 ```java
 public final class MediaKey {
-    private final long mediaStoreId;
-    private final MediaType mediaType;
+    private final MediaType type;
+    private final long id;
 
-    public MediaKey(long mediaStoreId, MediaType mediaType) {
-        this.mediaStoreId = mediaStoreId;
-        this.mediaType = mediaType;
+    public MediaKey(MediaType type, long id) {
+        this.type = type;
+        this.id = id;
     }
 
     // getters, equals, hashCode, toString — all written by you
 }
 ```
 
-`equals` is why `keptKeys()` can return a `Set<MediaKey>`. Image 5 and video 5 are different keys because `mediaType` is part of the value. A hand-written Java `equals` that compared only the id would hide one of those files from the scanner.
+`equals` is why `keptKeys()` can return a `Set<MediaKey>`. Image 5 and video 5 are different keys because `type` is part of the value. A hand-written Java `equals` that compared only the id would hide one of those files from the scanner.
 
 `copy` is how you change one field of an immutable value. The original is left alone:
 
@@ -63,7 +65,7 @@ In Java that is a second constructor that fills the missing argument in, and eve
 
 `require` in the `init` block is the constructor check. It throws `IllegalArgumentException` with the message you give it. Same idea as `if (id <= 0) throw new IllegalArgumentException(...)` at the top of a Java constructor. The block runs for every constructor path, including `copy`.
 
-`val key get() = MediaKey(...)` is a property with a getter and no field. Java would be `public MediaKey getKey()`. Call sites write `result.key`, not `result.getKey()`.
+`val key get() = MediaKey(type = mediaType, id = mediaStoreId)` is a property with a getter and no field. Java would be `public MediaKey getKey()`. Call sites write `result.key`, not `result.getKey()`.
 
 ## 2. Enums
 
@@ -119,7 +121,42 @@ val counts = store.observePendingCounts().first()
 
 ## 5. Interfaces, and default methods
 
-`RoomScanResultStore` is a class, not an interface. The shared interface belongs in `:core:model`, as `ScanStore`. That type is on an open pull request and is not on `main` yet, so this module cannot implement it today. Publishing a second interface here would give the scan worker two contracts. Callers ask `roomScanResultStore(context)` for the Room class. `:app` does not call it yet. When this class implements `ScanStore` and uses `model.MediaKey`, the `:app` owner points `ScanRuntime.store()` at it. Call sites that only need the scan contract will then depend on the interface, the same way a Java method can take the interface and ignore which class was constructed.
+`RoomScanResultStore` is a class that implements `ScanStore`. In Kotlin the colon does both jobs of Java's `extends` and `implements`:
+
+```kotlin
+class RoomScanResultStore : ScanStore {
+    override suspend fun upsertBatch(items: List<MediaItem>) {
+        // insert or replace each MediaItem
+    }
+
+    override fun observeProgress(): Flow<ScanProgress> {
+        // Room query, collected by the home screen
+    }
+}
+```
+
+```java
+public final class RoomScanResultStore implements ScanStore {
+    @Override
+    public Object upsertBatch(List<MediaItem> items, Continuation<? super Unit> continuation) {
+        // the Kotlin compiler adds Continuation; you do not write this in Kotlin
+        return null;
+    }
+
+    @Override
+    public Flow<ScanProgress> observeProgress() {
+        return null;
+    }
+}
+```
+
+`override` is `@Override`. Kotlin requires the keyword. A signature that does not match the interface is a compile error, the same as a missing `@Override` mismatch in Java. There is no `implements` keyword.
+
+`upsertBatch` is `suspend`. From Java that method is not a normal call: the compiler adds a hidden `Continuation` argument, which is why the Java sketch above does not look like the Kotlin. You call it from another `suspend` function, or from `viewModelScope.launch { store.upsertBatch(items) }`. You do not call it from a Java click listener.
+
+`observeProgress` returns a `Flow`, not a listener you register and later forget to remove. Collecting the flow is the registration. Cancelling the coroutine is the unregister. Room emits the current run as soon as collection starts, then again when `saveRun` changes it.
+
+Callers that only need the scan contract can take a `ScanStore` and ignore which class was constructed, the same way a Java method can take the interface. `:app` does not do that yet. `ScanRuntime.store()` still returns the in-memory stand-in. The review methods (`upsert`, `markKept`, `remove`) are ordinary methods on the Room class. They are not on the interface. A second interface in `:core:data` would give the worker two contracts, so there isn't one.
 
 A Kotlin interface can have default method bodies. That is the same feature as a Java 8 `default` method. `ScanStore` does not use one. This is what the syntax looks like, so it is familiar when it shows up:
 
@@ -171,11 +208,11 @@ data class ScanResultEntity(
 
 `suspend` on a DAO function makes the generated code run off the main thread. `Flow` on a DAO function makes the generated code register a table observer and re-query. You do not write that observer.
 
-`@Database(entities = [...], version = 1, exportSchema = true)` is the database class. It is abstract. Room generates the subclass that creates the SQLite file `scan-results.db`. `exportSchema = true` asks Room to also write a JSON description of version 1. The file is checked in under `core/data/schemas/`. A future migration test opens that JSON and checks that the migration turns a version 1 database into the new shape. Without the file, that test has nothing to start from.
+`@Database(entities = [...], version = 2, exportSchema = true)` is the database class. It is abstract. Room generates the subclass that creates the SQLite file `scan-results.db`. `exportSchema = true` asks Room to write a JSON description of the current version. Version 1 (`scan_results` only) and version 2 (the scan tables added beside it) are both checked in under `core/data/schemas/`. `MIGRATION_1_2` creates the new tables and does not rewrite a kept review row.
 
 `Room.databaseBuilder(...).build()` does not run queries. The file is opened on first use. `GalleryDatabase.get` keeps one instance per process. Two callers of `roomScanResultStore` share that connection. The double-checked `instance` read is the same pattern as a Java static holder with `volatile` and a `synchronized` block. Kotlin's `synchronized(this)` is `synchronized` on the companion object.
 
-`RoomScanResultStore`, not the DAO, is what the review screen calls. The DAO speaks entities and SQL. The store speaks `ScanResult` and `MediaKey`, skips kept rows inside a transaction, and chunks long `IN (...)` lists so SQLite's placeholder limit cannot reject a 2000-item trash batch. The scan worker's calls (`upsertBatch`, `saveCheckpoint`, `saveRun`) arrive when this class implements `ScanStore`.
+`RoomScanResultStore`, not the DAO, is what callers use. The DAO speaks entities and SQL. The store speaks `ScanResult`, `MediaItem`, and `MediaKey`. Review writes skip kept rows inside a transaction and chunk long `IN (...)` lists so SQLite's placeholder limit cannot reject a 2000-item trash batch. The same class is the `ScanStore` the scan worker will use once `:app` points `ScanRuntime.store()` at `roomScanResultStore`.
 
 ## 7. KSP, and what an annotation processor used to be
 

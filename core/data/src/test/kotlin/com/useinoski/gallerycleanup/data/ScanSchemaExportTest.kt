@@ -46,4 +46,31 @@ class ScanSchemaExportTest {
             )
         }
     }
+
+    @Test
+    fun versionTwoAddsTheScanStoreTablesWithoutABlob() {
+        val schema = File("schemas").walkTopDown()
+            .filter { file -> file.isFile && file.name == "2.json" }
+            .singleOrNull()
+            ?: error("Room schema export for version 2 is missing under core/data/schemas.")
+        val text = schema.readText()
+        listOf(
+            "scan_results",
+            "media_item",
+            "scan_checkpoint",
+            "scan_run",
+            "scan_type_progress",
+        ).forEach { table ->
+            assertTrue(
+                "$table missing from ${schema.path}",
+                text.contains("\"tableName\": \"$table\""),
+            )
+        }
+        assertTrue(text.contains("\"columnName\": \"removed\""))
+        assertTrue(text.contains("\"columnName\": \"position\""))
+        assertFalse(
+            "the database must not store a binary copy of the media",
+            text.contains("\"affinity\": \"BLOB\""),
+        )
+    }
 }

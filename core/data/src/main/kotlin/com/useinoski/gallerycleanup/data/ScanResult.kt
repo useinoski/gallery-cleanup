@@ -1,5 +1,6 @@
 package com.useinoski.gallerycleanup.data
 
+import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
 
 /**
@@ -38,7 +39,7 @@ data class ScanResult(
     val reviewStatus: ReviewStatus = ReviewStatus.Pending,
 ) {
     val key: MediaKey
-        get() = MediaKey(mediaStoreId, mediaType)
+        get() = MediaKey(type = mediaType, id = mediaStoreId)
 
     init {
         require(mediaStoreId > 0L) { "MediaStore id must be positive." }
