@@ -17,6 +17,13 @@ coroutines = "1.11.0"
 junit = "4.13.2"
 extJunit = "1.3.0"
 robolectric = "4.18.1"
+# Interpreter line. LiteRT 2.x keeps Interpreter on the CPU and has no NNAPI
+# accelerator on CompiledModel, so GPU and NNAPI delegates stay on 1.4.x.
+litert = "1.4.2"
+# Bundled on-device models. Not the unbundled download variants.
+mlkitFace = "16.1.7"
+mlkitImageLabeling = "17.0.9"
+androidxTest = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -35,4 +42,10 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "extJunit" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTest" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTest" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
+litert-gpu = { group = "com.google.ai.edge.litert", name = "litert-gpu", version.ref = "litert" }
+mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFace" }
+mlkit-image-labeling = { group = "com.google.mlkit", name = "image-labeling", version.ref = "mlkitImageLabeling" }
