@@ -9,7 +9,6 @@ Open these files beside it:
 - `core/data/src/main/kotlin/com/useinoski/gallerycleanup/data/ScanResultEntity.kt`
 - `core/data/src/main/kotlin/com/useinoski/gallerycleanup/data/ScanResultDao.kt`
 - `core/data/src/main/kotlin/com/useinoski/gallerycleanup/data/GalleryDatabase.kt`
-- `core/data/src/main/kotlin/com/useinoski/gallerycleanup/data/GalleryDatabase.kt`
 
 ## 1. Data classes
 
@@ -120,7 +119,7 @@ val counts = store.observePendingCounts().first()
 
 ## 5. Interfaces, and default methods
 
-`RoomScanResultStore` is a class, not an interface. The shared interface belongs in `:core:model`, as `ScanStore`. That type is on an open pull request and is not on `main` yet, so this module cannot implement it today. Publishing a second interface here would give the scan worker two contracts. The activity asks `roomScanResultStore(context)` for the Room class directly. When `ScanStore` lands, this class will grow `: ScanStore` and the call sites that only need the scan contract will depend on the interface, the same way a Java method can take the interface and ignore which class was constructed.
+`RoomScanResultStore` is a class, not an interface. The shared interface belongs in `:core:model`, as `ScanStore`. That type is on an open pull request and is not on `main` yet, so this module cannot implement it today. Publishing a second interface here would give the scan worker two contracts. Callers ask `roomScanResultStore(context)` for the Room class. `:app` does not call it yet. When this class implements `ScanStore` and uses `model.MediaKey`, the `:app` owner points `ScanRuntime.store()` at it. Call sites that only need the scan contract will then depend on the interface, the same way a Java method can take the interface and ignore which class was constructed.
 
 A Kotlin interface can have default method bodies. That is the same feature as a Java 8 `default` method. `ScanStore` does not use one. This is what the syntax looks like, so it is familiar when it shows up:
 

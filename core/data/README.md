@@ -14,7 +14,7 @@ What `RoomScanResultStore` stores today is the review row: category, score, and 
 fun roomScanResultStore(context: Context): RoomScanResultStore
 ```
 
-`:app` builds that from `galleryAppGraph`. There is no Hilt.
+Nothing in `:app` depends on this module yet. There is no Hilt. After `RoomScanResultStore` implements `ScanStore` and uses `model.MediaKey`, the `:app` owner swaps `ScanRuntime.store()` to this factory.
 
 ## Table `scan_results` (version 1)
 
