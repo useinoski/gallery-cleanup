@@ -40,6 +40,20 @@ class MediaStoreMediaRepository(
             pageOf(fetched, request.offset, request.limit)
         }
     }
+
+    override suspend fun scanPage(request: ScanPageRequest): ScanPage = withContext(ioDispatcher) {
+        val fetched = contentResolver.loadScan(scanPageQuery(request))
+        scanPageOf(fetched, request.limit)
+    }
+
+    override suspend fun countScan(request: ScanCountRequest): Int = withContext(ioDispatcher) {
+        contentResolver.count(scanCountQuery(request))
+    }
+
+    override suspend fun pageIds(request: IdPageRequest): IdPage = withContext(ioDispatcher) {
+        val fetched = contentResolver.loadIds(idPageQuery(request))
+        idPageOf(fetched, request.limit)
+    }
 }
 
 private val columns = arrayOf(
@@ -49,6 +63,17 @@ private val columns = arrayOf(
     MediaStore.MediaColumns.MIME_TYPE,
     MediaStore.MediaColumns.RELATIVE_PATH,
     MediaStore.MediaColumns.DISPLAY_NAME,
+)
+
+private val scanColumns = arrayOf(
+    MediaStore.MediaColumns._ID,
+    MediaStore.MediaColumns.DATE_ADDED,
+    MediaStore.MediaColumns.DATE_MODIFIED,
+    MediaStore.MediaColumns.SIZE,
+    MediaStore.MediaColumns.MIME_TYPE,
+    MediaStore.MediaColumns.RELATIVE_PATH,
+    MediaStore.MediaColumns.DISPLAY_NAME,
+    MediaStore.MediaColumns.GENERATION_MODIFIED,
 )
 
 private fun StoreQuery.collectionUri(): Uri = when (type) {
@@ -95,4 +120,50 @@ private fun ContentResolver.load(spec: StoreQuery): List<MediaItem> {
         return items
     }
     return emptyList()
+}
+
+private fun ContentResolver.loadScan(spec: StoreQuery): List<ScannedRow> {
+    val uri = spec.collectionUri()
+    query(uri, scanColumns, spec.toBundle(), null)?.use { cursor ->
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+        val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+        val dateModifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+        val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+        val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+        val relativeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+        val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+        val generationColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.GENERATION_MODIFIED)
+        val rows = ArrayList<ScannedRow>(cursor.count)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idColumn)
+            rows += ScannedRow(
+                item = MediaItem(
+                    id = id,
+                    uri = ContentUris.withAppendedId(uri, id).toString(),
+                    type = spec.type,
+                    dateAdded = cursor.getLong(dateAddedColumn),
+                    size = cursor.getLong(sizeColumn),
+                    path = relativeItemPath(cursor.getString(relativeColumn), cursor.getString(nameColumn)),
+                    mimeType = cursor.getString(mimeColumn),
+                ),
+                dateModified = cursor.getLong(dateModifiedColumn),
+                generationModified = cursor.getLong(generationColumn),
+            )
+        }
+        return rows
+    }
+    return emptyList()
+}
+
+private fun ContentResolver.loadIds(spec: StoreQuery): List<Long> {
+    return query(spec.collectionUri(), arrayOf(MediaStore.MediaColumns._ID), spec.toBundle(), null)
+        ?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            val ids = ArrayList<Long>(cursor.count)
+            while (cursor.moveToNext()) {
+                ids += cursor.getLong(idColumn)
+            }
+            ids
+        }
+        ?: emptyList()
 }

@@ -61,10 +61,10 @@ Auto Backup is off (`android:allowBackup="false"`). `res/xml/backup_rules.xml` a
 
 | Module | Owner | What it is this week |
 | --- | --- | --- |
-| `:app` | Dev 1 | Activity, theme, onboarding, permission screens, home counts |
-| `:core:model` | Dev 1 | Shared types: `MediaType`, `MediaItem`, `PermissionState`, `LibraryAccess` |
-| `:core:media` | Dev 1 | Permission rules and the MediaStore repository (counts now, paged items for the scan) |
-| `:core:data` | Dev 2 | Empty. Room for scan results and per-item decisions goes here |
+| `:app` | Dev 1 | Activity, theme, onboarding, permission screens, home counts, scan controls |
+| `:core:model` | Dev 1 | Shared types, including the `ScanStore` contract the scan writes through |
+| `:core:media` | Dev 1 | Permission rules, MediaStore paging, and the library scanner |
+| `:core:data` | Dev 2 | Empty. Room implementation of `ScanStore` goes here |
 | `:feature:review` | Dev 2 | Empty. Review UI, trash, keep, and the locked folder go here |
 | `:detection` | ML specialist | Detector contract only. No model yet |
 
@@ -93,11 +93,13 @@ Partial access shows the counts for the selected items only, says so, and offers
 
 Google Play's photo and video policy allows broad library access for a gallery manager, which is what a cleanup app is, and still requires the app to work when the user grants only a selection. The photo picker is not enough here: it returns a one-time selection and cannot count the library. The in-app explanation is shown before the system dialog. `androidx.activity:activity-compose` 1.13 is above 1.7, so the photo picker contract is available later if a one-time import is added. It is not the way the library is scanned.
 
-## What week 1 deliberately leaves out
+## What is left for later
 
 - Deletion, trash, and the locked folder (`:feature:review`)
-- Room and WorkManager (`:core:data`, then a worker beside it)
-- ML Kit (`:detection`). When it is added, use the bundled artifacts `com.google.mlkit:face-detection` and `com.google.mlkit:image-labeling`. Do not use `com.google.android.gms:play-services-mlkit-*`.
+- The Room implementation of `ScanStore` (`:core:data`). The app currently binds an in-memory stand-in so the scan runs without that module. It does not survive process death; the Room store will, and the worker already resumes from whatever `ScanStore` it is given.
+- ML Kit (`:detection`). When it is added, use the bundled artifacts `com.google.mlkit:face-detection` and `com.google.mlkit:image-labeling`. Do not use `com.google.android.gms:play-services-mlkit-*`. The scan calls `ScanBatchObserver`, which is a no-op until a detector is bound there.
+
+The scan notes for a Java developer are in [docs/week2-kotlin-notes.md](docs/week2-kotlin-notes.md).
 
 ## Toolchain
 

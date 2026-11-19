@@ -6,8 +6,11 @@ import com.useinoski.gallerycleanup.media.MediaCounts
 import com.useinoski.gallerycleanup.media.MediaRepository
 import com.useinoski.gallerycleanup.media.ReadableMedia
 import com.useinoski.gallerycleanup.model.LibraryAccess
+import com.useinoski.gallerycleanup.model.ScanProgress
+import com.useinoski.gallerycleanup.model.ScanRun
 import com.useinoski.gallerycleanup.prefs.AudioScanStore
 import com.useinoski.gallerycleanup.prefs.OnboardingStore
+import com.useinoski.gallerycleanup.scan.ScanControls
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +26,7 @@ data class AppUiState(
     val counts: MediaCounts = MediaCounts(null, null, null, null),
     val loading: Boolean = true,
     val failed: Boolean = false,
+    val scan: ScanProgress = ScanProgress.from(ScanRun.IDLE),
 )
 
 /**
@@ -40,6 +44,7 @@ class HomeViewModel(
     private val repository: MediaRepository,
     private val onboardingStore: OnboardingStore,
     private val audioScanStore: AudioScanStore,
+    private val scans: ScanControls,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -51,6 +56,22 @@ class HomeViewModel(
     val state: StateFlow<AppUiState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            scans.progress.collect { progress ->
+                _state.update { current -> current.copy(scan = progress) }
+            }
+        }
+    }
+
+    fun startScan() {
+        scans.start()
+    }
+
+    fun cancelScan() {
+        scans.cancel()
+    }
 
     fun completeOnboarding() {
         onboardingStore.setComplete()

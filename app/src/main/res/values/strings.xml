@@ -45,4 +45,18 @@
     <string name="audio_blocked">Audio access is blocked. You can allow it in Settings. Gallery Cleanup still will not upload anything.</string>
     <string name="audio_need_photos">On Android 11 and 12, audio uses the same storage permission as photos. Allow photos and videos first, then turn audio scanning on.</string>
     <string name="audio_split">%1$,d music · %2$,d other</string>
+
+    <string name="scan_title">Scan this phone</string>
+    <string name="scan_start">Start scan</string>
+    <string name="scan_again">Scan for changes</string>
+    <string name="scan_cancel">Cancel scan</string>
+    <string name="scan_progress">%1$,d of %2$,d</string>
+    <string name="scan_type_progress">%1$s · %2$,d of %3$,d</string>
+    <string name="scan_idle">A scan reads what you have allowed, one batch at a time. Nothing is deleted or uploaded.</string>
+    <string name="scan_running">Scanning the library on this phone. Nothing is uploaded.</string>
+    <string name="scan_done">Scan finished. Nothing was deleted.</string>
+    <string name="scan_cancelled">Scan cancelled. Start again to continue from the last saved batch.</string>
+    <string name="scan_revoked">Access changed, so the scan stopped. Allow photos and videos again to continue.</string>
+    <string name="scan_failed">The scan stopped before it finished. Start again to continue from the last saved batch.</string>
+    <string name="scan_need_access">Allow photos or videos before scanning.</string>
 </resources>

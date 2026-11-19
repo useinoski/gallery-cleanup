@@ -33,6 +33,14 @@
         android:name="android.permission.MANAGE_MEDIA"
         tools:node="remove" />
 
+    <!-- WorkManager declares this for expedited work and setForeground.
+         The scan uses neither. Leaving the permission in would put a
+         foreground service in front of Play review for a job that does
+         not show a notification. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -43,6 +51,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.GalleryCleanup"
         tools:targetApi="31">
+        <!-- Declared by WorkManager for workers that call setForeground or
+             setExpedited. This app does not. Removing the service means it
+             cannot be started. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            tools:node="remove" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

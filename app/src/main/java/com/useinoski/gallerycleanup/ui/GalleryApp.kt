@@ -146,6 +146,9 @@ fun GalleryApp(
                         },
                         onOpenSettings = { activity?.openAppSettings() },
                         onRetry = { viewModel.refresh(reader.snapshot()) },
+                        scan = state.scan,
+                        onStartScan = { viewModel.startScan() },
+                        onCancelScan = { viewModel.cancelScan() },
                     )
                 }
             }
