@@ -44,11 +44,15 @@ data class MediaKey(
  * AND (generationModifiedAfter IS NULL OR GENERATION_MODIFIED > generationModifiedAfter)
  * ```
  *
- * [generationModifiedAtMost] is `MediaStore.getGeneration` for
- * `VOLUME_EXTERNAL`, read once at the start of the pass. Rows inserted or
- * edited after that read have a higher generation and belong to the next
- * pass, which is why a checkpoint from this pass must keep the same upper
- * bound instead of re-reading generation on resume.
+ * [generationModifiedAtMost] is the inclusive upper bound for this pass,
+ * chosen once at the start and then only read back. On a phone with a single
+ * external volume it is `MediaStore.getGeneration` for that volume (not the
+ * synthetic `VOLUME_EXTERNAL`, which is not a generation the platform will
+ * return). Rows inserted or edited after that read have a higher generation
+ * and belong to the next pass, which is why a resume must keep this bound
+ * instead of calling `getGeneration` again. `Long.MAX_VALUE` means the pass
+ * applied no upper bound, which is what a multi-volume library uses because
+ * each volume has its own counter.
  *
  * [generationModifiedAfter] is the previous pass's
  * [ScanRun.completedVolumeGeneration], or null when this pass is a full walk
@@ -56,11 +60,14 @@ data class MediaKey(
  * have been reset). Null means "no lower bound", not zero. Zero is a real
  * generation.
  *
- * [mediaStoreVersion] is `MediaStore.getVersion` for the same volume, read
- * with the generation at the start of the pass. On resume the worker compares
- * it to a fresh `getVersion`. If they differ, the checkpoint is discarded and
- * the pass starts over as a full walk. Do not try to continue a keyset cursor
- * across a version change.
+ * [mediaStoreVersion] is the volume token captured with
+ * [generationModifiedAtMost] at the start of the pass. For one external
+ * volume it is `MediaStore.getVersion` of that volume. For several volumes
+ * it is a single string that changes when any volume's version or generation
+ * changes. On resume the worker compares it to a fresh read. If they differ,
+ * the checkpoint is discarded and the pass starts over as a full walk. Do not
+ * try to continue a keyset cursor across a version change. The store persists
+ * the string; it does not interpret it.
  *
  * [scanned] counts rows of [type] already handed to [ScanStore.upsertBatch]
  * in this pass, including the row this checkpoint points at. It is not a
