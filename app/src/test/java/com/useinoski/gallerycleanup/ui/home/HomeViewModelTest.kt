@@ -1,5 +1,7 @@
 package com.useinoski.gallerycleanup.ui.home
 
+import com.useinoski.gallerycleanup.data.CategoryCounts
+import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.media.MediaCounts
 import com.useinoski.gallerycleanup.media.IdPage
 import com.useinoski.gallerycleanup.media.IdPageRequest
@@ -140,6 +142,27 @@ class HomeViewModelTest {
         viewModel.cancelScan()
         assertEquals(1, scans.starts)
         assertEquals(1, scans.cancels)
+    }
+
+    @Test
+    fun flaggedCountsArriveOnTheHomeState() {
+        val counts = MutableStateFlow(emptyCategoryCounts())
+        val viewModel = HomeViewModel(
+            FakeMediaRepository(),
+            MemoryOnboarding(true),
+            MemoryAudio(false),
+            FakeScans(),
+            counts,
+        )
+        assertEquals(0, viewModel.state.value.flaggedCounts[ScanCategory.People])
+        counts.value = CategoryCounts(
+            pending = ScanCategory.entries.associateWith { category ->
+                if (category == ScanCategory.People) 4 else if (category == ScanCategory.Sensitive) 1 else 0
+            },
+        )
+        assertEquals(4, viewModel.state.value.flaggedCounts[ScanCategory.People])
+        assertEquals(1, viewModel.state.value.flaggedCounts[ScanCategory.Sensitive])
+        assertEquals(5, viewModel.state.value.flaggedCounts.flagged)
     }
 
     private fun fullAccess() = LibraryAccess(

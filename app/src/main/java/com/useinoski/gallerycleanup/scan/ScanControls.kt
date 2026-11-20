@@ -19,8 +19,9 @@ interface ScanControls {
 class WorkManagerScanControls(
     context: Context,
 ) : ScanControls {
-    private val workManager = WorkManager.getInstance(context.applicationContext)
-    override val progress: Flow<ScanProgress> = ScanRuntime.store().observeProgress()
+    private val appContext = context.applicationContext
+    private val workManager = WorkManager.getInstance(appContext)
+    override val progress: Flow<ScanProgress> = ScanRuntime.store(appContext).observeProgress()
 
     override fun start() {
         enqueueLibraryScan(workManager)

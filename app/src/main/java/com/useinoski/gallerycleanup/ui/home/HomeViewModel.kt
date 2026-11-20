@@ -2,6 +2,8 @@ package com.useinoski.gallerycleanup.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.useinoski.gallerycleanup.data.CategoryCounts
+import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.media.MediaCounts
 import com.useinoski.gallerycleanup.media.MediaRepository
 import com.useinoski.gallerycleanup.media.ReadableMedia
@@ -13,9 +15,11 @@ import com.useinoski.gallerycleanup.prefs.OnboardingStore
 import com.useinoski.gallerycleanup.scan.ScanControls
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -27,6 +31,7 @@ data class AppUiState(
     val loading: Boolean = true,
     val failed: Boolean = false,
     val scan: ScanProgress = ScanProgress.from(ScanRun.IDLE),
+    val flaggedCounts: CategoryCounts = emptyCategoryCounts(),
 )
 
 /**
@@ -39,12 +44,17 @@ data class AppUiState(
  *
  * [state] is a StateFlow. Unlike a one-shot callback, it always has a current
  * value, so a new collector (a rotated screen) gets the latest counts immediately.
+ *
+ * [flaggedCounts] is the Room flow of pending review rows, one count per
+ * category. The collector writes each emission into [state]. A new screen
+ * reads the current value instead of waiting for the next scan write.
  */
 class HomeViewModel(
     private val repository: MediaRepository,
     private val onboardingStore: OnboardingStore,
     private val audioScanStore: AudioScanStore,
     private val scans: ScanControls,
+    private val flaggedCounts: Flow<CategoryCounts> = flowOf(emptyCategoryCounts()),
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -61,6 +71,11 @@ class HomeViewModel(
         viewModelScope.launch {
             scans.progress.collect { progress ->
                 _state.update { current -> current.copy(scan = progress) }
+            }
+        }
+        viewModelScope.launch {
+            flaggedCounts.collect { counts ->
+                _state.update { current -> current.copy(flaggedCounts = counts) }
             }
         }
     }
@@ -121,3 +136,7 @@ class HomeViewModel(
         }
     }
 }
+
+/** Every category, all zeros. Room replaces this once a collector starts. */
+fun emptyCategoryCounts(): CategoryCounts =
+    CategoryCounts(pending = ScanCategory.entries.associateWith { 0 })

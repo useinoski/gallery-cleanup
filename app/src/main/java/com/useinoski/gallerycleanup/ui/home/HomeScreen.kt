@@ -25,6 +25,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.useinoski.gallerycleanup.R
+import com.useinoski.gallerycleanup.data.CategoryCounts
+import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.media.AudioScanRequest
 import com.useinoski.gallerycleanup.media.MediaCounts
 import com.useinoski.gallerycleanup.media.audioScanRequest
@@ -58,6 +60,7 @@ fun HomeScreen(
     scan: ScanProgress,
     onStartScan: () -> Unit,
     onCancelScan: () -> Unit,
+    flaggedCounts: CategoryCounts = emptyCategoryCounts(),
 ) {
     Column(
         modifier = Modifier
@@ -102,6 +105,7 @@ fun HomeScreen(
             access = access,
             audioScanningEnabled = audioScanningEnabled,
             scan = scan,
+            flaggedCounts = flaggedCounts,
             onStartScan = onStartScan,
             onCancelScan = onCancelScan,
         )
@@ -140,6 +144,7 @@ private fun ScanCard(
     access: LibraryAccess,
     audioScanningEnabled: Boolean,
     scan: ScanProgress,
+    flaggedCounts: CategoryCounts,
     onStartScan: () -> Unit,
     onCancelScan: () -> Unit,
 ) {
@@ -181,6 +186,9 @@ private fun ScanCard(
                     )
                 }
             }
+            if (scan.phase != ScanPhase.Idle || flaggedCounts.flagged > 0) {
+                FlaggedCounts(flaggedCounts)
+            }
             Spacer(Modifier.height(12.dp))
             if (running) {
                 OutlinedButton(onClick = onCancelScan, modifier = Modifier.fillMaxWidth()) {
@@ -205,6 +213,48 @@ private fun ScanCard(
             }
         }
     }
+}
+
+private val flaggedOrder: List<ScanCategory> = listOf(
+    ScanCategory.Sensitive,
+    ScanCategory.Immodest,
+    ScanCategory.AlcoholGambling,
+    ScanCategory.People,
+    ScanCategory.Screenshot,
+    ScanCategory.Video,
+    ScanCategory.Audio,
+)
+
+@Composable
+private fun FlaggedCounts(counts: CategoryCounts) {
+    Spacer(Modifier.height(12.dp))
+    Text(
+        text = stringResource(R.string.flagged_title),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    flaggedOrder.forEach { category ->
+        Text(
+            text = stringResource(
+                R.string.flagged_count,
+                stringResource(categoryLabel(category)),
+                counts[category],
+            ),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+    }
+}
+
+private fun categoryLabel(category: ScanCategory): Int = when (category) {
+    ScanCategory.Sensitive -> R.string.category_nudity
+    ScanCategory.Immodest -> R.string.category_suggestive
+    ScanCategory.AlcoholGambling -> R.string.category_alcohol_gambling
+    ScanCategory.People -> R.string.category_people
+    ScanCategory.Screenshot -> R.string.category_screenshots
+    ScanCategory.Video -> R.string.label_videos
+    ScanCategory.Audio -> R.string.label_audio
+    ScanCategory.Unflagged -> error("Unflagged is not a review count")
 }
 
 private fun scanMessage(phase: ScanPhase): Int = when (phase) {
