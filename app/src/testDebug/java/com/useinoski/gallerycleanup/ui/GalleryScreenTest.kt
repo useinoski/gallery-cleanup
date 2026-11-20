@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import com.useinoski.gallerycleanup.data.CategoryCounts
+import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.media.MediaCounts
 import com.useinoski.gallerycleanup.model.LibraryAccess
 import com.useinoski.gallerycleanup.model.MediaType
@@ -211,5 +213,53 @@ class GalleryScreenTest {
         compose.onNodeWithText("Start scan").performScrollTo().performClick()
         assertTrue(started == 1)
         compose.onAllNodesWithText("Cancel scan").assertCountEquals(0)
+        compose.onAllNodesWithText("Nudity: 0").assertCountEquals(0)
+    }
+
+    @Test
+    fun aFinishedScanShowsOneCountPerFlaggedCategory() {
+        val flagged = CategoryCounts(
+            pending = ScanCategory.entries.associateWith { category ->
+                when (category) {
+                    ScanCategory.Sensitive -> 2
+                    ScanCategory.People -> 5
+                    ScanCategory.Video -> 1
+                    else -> 0
+                }
+            },
+        )
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Full,
+                        videos = PermissionState.Full,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = 20, videos = 4, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress(phase = ScanPhase.Completed, byType = emptyList(), detail = null),
+                    onStartScan = {},
+                    onCancelScan = {},
+                    flaggedCounts = flagged,
+                )
+            }
+        }
+        compose.onNodeWithText("Nudity: 2").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("People: 5").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Videos: 1").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Suggestive: 0").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Screenshots: 0").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("Unflagged").assertCountEquals(0)
     }
 }

@@ -149,6 +149,7 @@ fun GalleryApp(
                         scan = state.scan,
                         onStartScan = { viewModel.startScan() },
                         onCancelScan = { viewModel.cancelScan() },
+                        flaggedCounts = state.flaggedCounts,
                     )
                 }
             }

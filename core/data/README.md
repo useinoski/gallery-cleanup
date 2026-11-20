@@ -12,7 +12,7 @@ Nothing here opens a socket. Do not add `INTERNET`, a sync adapter, or a backup 
 fun roomScanResultStore(context: Context): RoomScanResultStore
 ```
 
-Nothing in `:app` depends on this module yet. There is no Hilt. `ScanRuntime.store()` still returns `InMemoryScanStore`. After this lands, the `:app` owner can swap that binding to `roomScanResultStore(context)`, because the returned object is a `ScanStore`.
+`:app` depends on this module. There is no Hilt. `ScanRuntime.store(context)` returns `roomScanResultStore(context)`, and that object is the `ScanStore` the worker and the home screen share.
 
 Keys are `model.MediaKey` (`type`, then `id`). There is no `data.MediaKey`. The review table still uses the columns `media_store_id` and `media_type`.
 
@@ -48,7 +48,7 @@ Memes and chat-folder images are not their own category yet. File them under `Sc
 
 ## Scan worker
 
-`RoomScanResultStore` is a `ScanStore`: `upsertBatch`, `markRemoved`, `presentKeys`, one checkpoint, one run, and `observeProgress`. The KDoc on `ScanStore` is the spec. `:app` has not switched `ScanRuntime.store()` over yet, so a running build still uses `InMemoryScanStore`.
+`RoomScanResultStore` is a `ScanStore`: `upsertBatch`, `markRemoved`, `presentKeys`, one checkpoint, one run, and `observeProgress`. The KDoc on `ScanStore` is the spec. `:app` binds `ScanRuntime.store(context)` to this implementation.
 
 `markRemoved` flags a `media_item` row. It does not delete the file, and it does not delete the review row. `remove` is the review method, and it runs only after `createTrashRequest` succeeds.
 

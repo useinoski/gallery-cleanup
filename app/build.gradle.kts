@@ -15,6 +15,8 @@ android {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:media"))
+    implementation(project(":core:data"))
+    implementation(project(":detection"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

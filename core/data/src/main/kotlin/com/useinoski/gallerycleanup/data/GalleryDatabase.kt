@@ -66,8 +66,8 @@ abstract class GalleryDatabase : RoomDatabase() {
 /**
  * The Room store for this process. One database connection.
  *
- * The returned object implements `ScanStore`. Nothing in `:app` calls this
- * yet. `ScanRuntime.store()` still returns the in-memory stand-in.
+ * The returned object implements `ScanStore`. `:app` binds it from
+ * `ScanRuntime.store(context)` so the worker and the home screen share it.
  */
 fun roomScanResultStore(context: Context): RoomScanResultStore {
     return RoomScanResultStore(GalleryDatabase.get(context))

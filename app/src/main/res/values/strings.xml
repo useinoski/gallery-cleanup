@@ -59,4 +59,12 @@
     <string name="scan_revoked">Access changed, so the scan stopped. Allow photos and videos again to continue.</string>
     <string name="scan_failed">The scan stopped before it finished. Start again to continue from the last saved batch.</string>
     <string name="scan_need_access">Allow photos or videos before scanning.</string>
+
+    <string name="flagged_title">Flagged</string>
+    <string name="flagged_count">%1$s: %2$,d</string>
+    <string name="category_nudity">Nudity</string>
+    <string name="category_suggestive">Suggestive</string>
+    <string name="category_alcohol_gambling">Alcohol / gambling</string>
+    <string name="category_people">People</string>
+    <string name="category_screenshots">Screenshots</string>
 </resources>
