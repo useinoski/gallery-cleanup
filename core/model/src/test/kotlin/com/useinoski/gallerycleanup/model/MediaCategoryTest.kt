@@ -11,6 +11,7 @@ class MediaCategoryTest {
     fun stableIdsRoundTrip() {
         val expected = listOf(
             "sensitive" to MediaCategory.Sensitive,
+            "immodest" to MediaCategory.Immodest,
             "screenshots" to MediaCategory.Screenshots,
             "chat-images" to MediaCategory.ChatImages,
             "old-items" to MediaCategory.OldItems,
@@ -25,6 +26,11 @@ class MediaCategoryTest {
             assertEquals(id, category.id)
             assertEquals(category, MediaCategory.fromId(id))
         }
+        assertEquals(MediaCategory.Immodest, MediaCategory.fromId("immodest"))
+        assertEquals(
+            listOf(MediaCategory.Sensitive, MediaCategory.Immodest),
+            MediaCategory.entries.take(2),
+        )
         // Names stored by :core:data today, and a padded id, are not these ids.
         assertNull(MediaCategory.fromId("Sensitive"))
         assertNull(MediaCategory.fromId("Screenshot"))
@@ -52,7 +58,7 @@ class MediaCategoryTest {
     @Test
     fun sensitiveAndExperimentalFlags() {
         assertEquals(
-            listOf(MediaCategory.Sensitive),
+            listOf(MediaCategory.Sensitive, MediaCategory.Immodest),
             MediaCategory.entries.filter { category -> category.sensitive },
         )
         assertEquals(
@@ -61,11 +67,17 @@ class MediaCategoryTest {
         )
         assertTrue(MediaCategory.Sensitive.sensitive)
         assertFalse(MediaCategory.Sensitive.experimental)
+        assertTrue(MediaCategory.Immodest.sensitive)
+        assertFalse(MediaCategory.Immodest.experimental)
+        assertEquals("sensitive", MediaCategory.Sensitive.id)
+        assertEquals("immodest", MediaCategory.Immodest.id)
         assertTrue(MediaCategory.Experimental.experimental)
         assertFalse(MediaCategory.Experimental.sensitive)
 
         val chatAndNudity = setOf(MediaCategory.ChatImages, MediaCategory.Sensitive)
         assertTrue(chatAndNudity.any { category -> category.sensitive })
+        assertTrue(setOf(MediaCategory.Immodest).any { category -> category.sensitive })
+        assertFalse(setOf(MediaCategory.Immodest).any { category -> category.id == "sensitive" })
         assertFalse(chatAndNudity.any { category -> category.experimental })
         assertFalse(setOf(MediaCategory.ChatImages, MediaCategory.Screenshots).any { category -> category.sensitive })
     }

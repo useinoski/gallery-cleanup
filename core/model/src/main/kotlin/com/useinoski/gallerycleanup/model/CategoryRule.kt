@@ -5,10 +5,12 @@ package com.useinoski.gallerycleanup.model
  *
  * Implement this for a folder, file name, date, duration, or IS_MUSIC rule.
  * The NSFW detector, the face detector, and the alcohol and gambling labels
- * already return scores. A later change maps those scores onto
- * [MediaCategory.Sensitive], [MediaCategory.People], and
- * [MediaCategory.Experimental]. This interface has no bitmap and cannot run
- * a model.
+ * already return scores. A later change maps explicit nudity onto
+ * [MediaCategory.Sensitive] and immodest-but-not-explicit onto
+ * [MediaCategory.Immodest]. Immodest does not count toward the nudity
+ * threshold. Faces map onto [MediaCategory.People], and alcohol or gambling
+ * onto [MediaCategory.Experimental]. This interface has no bitmap and cannot
+ * run a model.
  *
  * [categorize] returns every category this rule matches. An empty set means
  * this rule does not apply. It is not an error, and it is not the unflagged

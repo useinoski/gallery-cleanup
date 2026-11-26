@@ -14,10 +14,11 @@ package com.useinoski.gallerycleanup.model
  * schema change. Changing an [id] is.
  *
  * [sensitive] means the review screen blurs the thumbnail. Blur when any
- * matched category has the flag, not only when it is the first match. Only
- * [Sensitive] is sensitive. Nudity and immodest content are that one group.
- * The scan still stores them as two buckets (`Sensitive` and `Immodest` in
- * `:core:data`). This type does not.
+ * matched category has the flag, not only when it is the first match.
+ * [Sensitive] and [Immodest] are both sensitive. [Sensitive] is explicit
+ * nudity only. [Immodest] is immodest but not explicit: its own softer
+ * review list, and it does not count toward the nudity threshold. The scan
+ * still stores the two buckets as `Sensitive` and `Immodest` in `:core:data`.
  *
  * [experimental] means the label is a guess and the screen should say so.
  * Only [Experimental] is experimental. Alcohol and gambling labels are that
@@ -25,7 +26,8 @@ package com.useinoski.gallerycleanup.model
  *
  * How today's stored names line up. This module does not read or write them:
  *
- * - `Sensitive` and `Immodest` → [Sensitive]
+ * - `Sensitive` → [Sensitive]
+ * - `Immodest` → [Immodest]. It does not fold into [Sensitive].
  * - `Screenshot` → [Screenshots]. A meme filed there stays there until a
  *   later rule places it in [ChatImages].
  * - `People` → [People]
@@ -52,11 +54,23 @@ enum class MediaCategory(
     val experimental: Boolean,
 ) {
     /**
-     * Nudity or immodest content, from the existing NSFW detector.
-     * Thumbnails are blurred. This is not a path rule.
+     * Explicit nudity, from the existing NSFW detector.
+     * Thumbnails are blurred. Immodest but not explicit is [Immodest],
+     * and that score does not count toward this category.
      */
     Sensitive(
         id = "sensitive",
+        sensitive = true,
+        experimental = false,
+    ),
+
+    /**
+     * Immodest but not explicit. A softer review list than [Sensitive].
+     * Thumbnails are blurred, the same as [Sensitive]. Not experimental.
+     * A file here is not part of the nudity threshold.
+     */
+    Immodest(
+        id = "immodest",
         sensitive = true,
         experimental = false,
     ),
