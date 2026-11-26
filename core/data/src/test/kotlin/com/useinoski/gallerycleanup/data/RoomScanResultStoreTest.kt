@@ -113,7 +113,7 @@ class RoomScanResultStoreTest {
     }
 
     @Test
-    fun keptItemsAreSkippedWhenTheScanWritesThemAgain() = runBlocking {
+    fun upsertKeepsAKeptDecisionAndStillWritesTheNewScore() = runBlocking {
         val original = sample(
             id = 12,
             category = ScanCategory.Screenshot,
@@ -143,12 +143,14 @@ class RoomScanResultStoreTest {
         assertTrue(store.observePending(ScanCategory.Sensitive).first().isEmpty())
         assertEquals(1, store.observePending(ScanCategory.People).first().size)
         val stored = dao.find(12, MediaType.Image)
-        assertEquals(ScanCategory.Screenshot, stored!!.category)
-        assertEquals(0.4f, stored.confidence, 0.0001f)
-        assertEquals("screenshot-rules-1", stored.modelVersion)
-        assertEquals(100L, stored.scannedAtEpochMillis)
-        assertEquals("content://media/external/images/media/12", stored.contentUri)
+        assertEquals(ScanCategory.Sensitive, stored!!.category)
+        assertEquals(0.99f, stored.confidence, 0.0001f)
+        assertEquals("nsfw-9", stored.modelVersion)
+        assertEquals(999L, stored.scannedAtEpochMillis)
+        assertEquals("content://media/external/images/media/12?changed", stored.contentUri)
         assertEquals(ReviewStatus.Kept, stored.reviewStatus)
+        assertEquals(AnalysisOutcome.Scored, stored.analysisOutcome)
+        assertEquals(0, stored.failureCount)
     }
 
     @Test
@@ -361,13 +363,14 @@ class RoomScanResultStoreTest {
         assertTrue(store.observePending(ScanCategory.Sensitive).first().isEmpty())
         assertEquals(0, store.observePendingCounts().first().flagged)
         val stored = dao.find(12, MediaType.Image)
-        assertEquals(ScanCategory.Screenshot, stored!!.category)
-        assertEquals(0.4f, stored.confidence, 0.0001f)
-        assertEquals("screenshot-rules-1", stored.modelVersion)
-        assertEquals(100L, stored.scannedAtEpochMillis)
-        assertEquals("content://media/external/images/media/12", stored.contentUri)
+        assertEquals(ScanCategory.Sensitive, stored!!.category)
+        assertEquals(0.99f, stored.confidence, 0.0001f)
+        assertEquals("nsfw-9", stored.modelVersion)
+        assertEquals(999L, stored.scannedAtEpochMillis)
+        assertEquals("content://media/external/images/media/12?changed", stored.contentUri)
         assertEquals(ReviewStatus.Kept, stored.reviewStatus)
         assertEquals(AnalysisOutcome.Scored, stored.analysisOutcome)
+        assertEquals(0, stored.failureCount)
 
         store.upsertBatch(listOf(media(12)))
         assertTrue(store.observePending(ScanCategory.Screenshot).first().isEmpty())
@@ -519,6 +522,89 @@ class RoomScanResultStoreTest {
         assertEquals(original.contentUri, stored.contentUri)
         assertEquals(original.modelVersion, stored.modelVersion)
         assertFalse(store.keysNeedingRescan(setOf("some-other-version")).contains(original.key))
+    }
+
+    @Test
+    fun rescanSkipsATrashedRowWhoseModelVersionIsOld() = runBlocking {
+        store.upsert(
+            listOf(
+                sample(id = 1, category = ScanCategory.People, modelVersion = "mlkit-face-count|face-v1"),
+            ),
+        )
+        store.markTrashed(listOf(MediaKey(MediaType.Image, 1)))
+
+        assertFalse(store.keysNeedingRescan(setOf("mlkit-face-count|face-v2")).contains(MediaKey(MediaType.Image, 1)))
+        assertTrue(store.observePending(ScanCategory.People).first().isEmpty())
+    }
+
+    @Test
+    fun upsertKeepsATrashedDecisionWhileUpdatingTheScore() = runBlocking {
+        val trashed = sample(
+            id = 2,
+            category = ScanCategory.People,
+            confidence = 2f,
+            modelVersion = "mlkit-face-count|face-v1",
+            scannedAtEpochMillis = 20,
+        )
+        store.upsert(listOf(trashed))
+        store.markTrashed(listOf(trashed.key))
+        store.recordFailure(trashed.key, trashed.contentUri, 30)
+
+        val failed = dao.find(2, MediaType.Image)
+        assertEquals(ReviewStatus.Trashed, failed!!.reviewStatus)
+        assertEquals(AnalysisOutcome.Failed, failed.analysisOutcome)
+        assertEquals(1, failed.failureCount)
+        assertTrue(store.observePending(ScanCategory.Unflagged).first().isEmpty())
+        assertFalse(store.keysNeedingRescan(setOf("mlkit-face-count|face-v2")).contains(trashed.key))
+
+        store.upsert(
+            listOf(
+                trashed.copy(
+                    category = ScanCategory.Screenshot,
+                    confidence = 0.2f,
+                    modelVersion = "screenshot-rules-1",
+                    scannedAtEpochMillis = 40,
+                ),
+            ),
+        )
+        val stored = dao.find(2, MediaType.Image)
+        assertEquals(ReviewStatus.Trashed, stored!!.reviewStatus)
+        assertEquals(ScanCategory.Screenshot, stored.category)
+        assertEquals(0.2f, stored.confidence, 0.0001f)
+        assertEquals("screenshot-rules-1", stored.modelVersion)
+        assertEquals(40L, stored.scannedAtEpochMillis)
+        assertEquals(AnalysisOutcome.Scored, stored.analysisOutcome)
+        assertEquals(0, stored.failureCount)
+        assertTrue(store.observePending(ScanCategory.Screenshot).first().isEmpty())
+    }
+
+    @Test
+    fun failureCountIncrementsOnEachFailureAndResetsWhenAScoreIsWritten() = runBlocking {
+        val key = MediaKey(MediaType.Image, 4)
+        val uri = "content://media/external/images/media/4"
+        store.recordFailure(key, uri, 1)
+        assertEquals(1, dao.find(4, MediaType.Image)!!.failureCount)
+        store.recordFailure(key, uri, 2)
+        val failed = dao.find(4, MediaType.Image)
+        assertEquals(2, failed!!.failureCount)
+        assertEquals(AnalysisOutcome.Failed, failed.analysisOutcome)
+        assertEquals(ReviewStatus.Pending, failed.reviewStatus)
+
+        store.upsert(
+            listOf(
+                sample(
+                    id = 4,
+                    category = ScanCategory.People,
+                    modelVersion = "mlkit-face-count|face-v2",
+                    scannedAtEpochMillis = 3,
+                ),
+            ),
+        )
+        val scored = dao.find(4, MediaType.Image)
+        assertEquals(0, scored!!.failureCount)
+        assertEquals(AnalysisOutcome.Scored, scored.analysisOutcome)
+        assertEquals(ReviewStatus.Pending, scored.reviewStatus)
+        assertEquals("mlkit-face-count|face-v2", scored.modelVersion)
     }
 
     @Test

@@ -13,9 +13,10 @@ import com.useinoski.gallerycleanup.model.MediaType
  * a trash request.
  *
  * [reviewStatus] is filled in when a row is read back. [RoomScanResultStore.upsert]
- * does not take a decision from this field: a new or replaced row is stored as
- * [ReviewStatus.Pending], and a row that is already [ReviewStatus.Kept] is left
- * unchanged. Decisions go through [RoomScanResultStore.markKept],
+ * does not take a decision from this field. A new row, and a row that was
+ * [ReviewStatus.Pending], is stored as [ReviewStatus.Pending]. A row that is
+ * already [ReviewStatus.Kept] or [ReviewStatus.Trashed] keeps that decision
+ * while the score is updated. Decisions go through [RoomScanResultStore.markKept],
  * [RoomScanResultStore.markTrashed], [RoomScanResultStore.markPending], and
  * [RoomScanResultStore.resetReviewed].
  *

@@ -73,19 +73,19 @@ val MIGRATION_1_2: Migration = object : Migration(1, 2) {
 }
 
 /**
- * Version 3 adds `scan_results.analysis_outcome` and an index for the rescan
- * query. Other tables are not rewritten.
+ * Version 3 adds `scan_results.analysis_outcome`, `failure_count`, and an
+ * index for the rescan query. Other tables are not rewritten.
  *
- * Every existing row starts as `Scored`. Version 2 could not tell a failed
- * decode from a clean photo: both were category `Unflagged` and model version
- * `none` ([MODEL_VERSION_NONE]). Those rows, including kept ones, are set to
- * `Failed`. That drops them out of the clean count. A kept row stays
- * `Kept`, so [RoomScanResultStore.keysNeedingRescan] still skips it and a
- * later [RoomScanResultStore.upsert] does not replace it. A pending row
- * becomes a rescan key until a scored upsert writes over it.
+ * Every existing row starts as `Scored`, with `failure_count` 0. Version 2
+ * could not tell a failed decode from a clean photo: both were category
+ * `Unflagged` and model version `none` ([MODEL_VERSION_NONE]). Only rows
+ * still [ReviewStatus.Pending] are set to `Failed`, so they leave the clean
+ * count and [RoomScanResultStore.keysNeedingRescan] returns them. Kept and
+ * trashed rows are not rewritten: a decision the user already made stays
+ * `Scored` and is not queued for another pass.
  *
  * Category, score, URI, model version, time, and review status are not
- * changed. The `ADD COLUMN` default and the new index are the ones Room
+ * changed. The `ADD COLUMN` defaults and the new index are the ones Room
  * exports in `3.json`.
  */
 val MIGRATION_2_3: Migration = object : Migration(2, 3) {
@@ -94,10 +94,15 @@ val MIGRATION_2_3: Migration = object : Migration(2, 3) {
             "ALTER TABLE `scan_results` ADD COLUMN `analysis_outcome` TEXT NOT NULL DEFAULT 'Scored'",
         )
         db.execSQL(
+            "ALTER TABLE `scan_results` ADD COLUMN `failure_count` INTEGER NOT NULL DEFAULT 0",
+        )
+        db.execSQL(
             """
             UPDATE `scan_results`
             SET `analysis_outcome` = 'Failed'
-            WHERE `category` = 'Unflagged' AND `model_version` = 'none'
+            WHERE `category` = 'Unflagged'
+                AND `model_version` = 'none'
+                AND `review_status` = 'Pending'
             """.trimIndent(),
         )
         db.execSQL(

@@ -45,10 +45,17 @@ data class ScanResultEntity(
     /**
      * `Scored` unless [RoomScanResultStore.recordFailure] wrote the row.
      * The SQL default matches [MIGRATION_2_3], which adds the column as
-     * `Scored` and then marks old `Unflagged` / `none` rows `Failed`.
+     * `Scored` and then marks pending `Unflagged` / `none` rows `Failed`.
      */
     @ColumnInfo(name = "analysis_outcome", defaultValue = "'Scored'")
     val analysisOutcome: AnalysisOutcome,
+    /**
+     * How many times analysis of this file has failed since the last score.
+     * [RoomScanResultStore.recordFailure] adds one. A scored [RoomScanResultStore.upsert]
+     * sets it back to 0. [RoomScanResultStore.keysNeedingRescan] does not read it.
+     */
+    @ColumnInfo(name = "failure_count", defaultValue = "0")
+    val failureCount: Int,
 )
 
 internal fun ScanResult.toEntity(): ScanResultEntity = ScanResultEntity(
@@ -59,10 +66,11 @@ internal fun ScanResult.toEntity(): ScanResultEntity = ScanResultEntity(
     confidence = confidence,
     modelVersion = modelVersion,
     scannedAtEpochMillis = scannedAtEpochMillis,
-    // upsert always stores pending and scored. Kept rows are filtered out
-    // before this runs. Failures go through AnalysisFailure.toEntity.
+    // The store fills review status and failure count from the row already
+    // stored. A new row is pending, scored, and has never failed.
     reviewStatus = ReviewStatus.Pending,
     analysisOutcome = AnalysisOutcome.Scored,
+    failureCount = 0,
 )
 
 internal fun ScanResultEntity.toResult(): ScanResult = ScanResult(

@@ -32,4 +32,5 @@ internal fun AnalysisFailure.toEntity(): ScanResultEntity = ScanResultEntity(
     scannedAtEpochMillis = scannedAtEpochMillis,
     reviewStatus = ReviewStatus.Pending,
     analysisOutcome = AnalysisOutcome.Failed,
+    failureCount = 0,
 )

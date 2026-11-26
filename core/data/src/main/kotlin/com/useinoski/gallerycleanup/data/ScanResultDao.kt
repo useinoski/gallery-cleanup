@@ -77,8 +77,18 @@ interface ScanResultDao {
     suspend fun keysNeedingRescan(
         currentModelVersions: Collection<String>,
         kept: ReviewStatus,
+        trashed: ReviewStatus,
         failedOutcome: AnalysisOutcome,
     ): List<MediaKeyRow>
+
+    @Query(
+        """
+        SELECT media_store_id, media_type, review_status, failure_count
+        FROM scan_results
+        WHERE media_type = :type AND media_store_id IN (:ids)
+        """,
+    )
+    suspend fun decisionsFor(type: MediaType, ids: List<Long>): List<StoredDecisionRow>
 
     @Query(
         """
@@ -100,6 +110,17 @@ data class MediaKeyRow(
     val mediaStoreId: Long,
     @ColumnInfo(name = "media_type")
     val mediaType: MediaType,
+)
+
+data class StoredDecisionRow(
+    @ColumnInfo(name = "media_store_id")
+    val mediaStoreId: Long,
+    @ColumnInfo(name = "media_type")
+    val mediaType: MediaType,
+    @ColumnInfo(name = "review_status")
+    val reviewStatus: ReviewStatus,
+    @ColumnInfo(name = "failure_count")
+    val failureCount: Int,
 )
 
 /**
@@ -147,6 +168,7 @@ private const val KEYS_NEEDING_RESCAN_SQL = """
     FROM scan_results
     $PRESENT_MEDIA_JOIN
     WHERE scan_results.review_status != :kept
+        AND scan_results.review_status != :trashed
         AND (
             scan_results.analysis_outcome = :failedOutcome
             OR scan_results.model_version NOT IN (:currentModelVersions)

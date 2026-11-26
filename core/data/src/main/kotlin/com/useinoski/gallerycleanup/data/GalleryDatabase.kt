@@ -11,9 +11,9 @@ import androidx.room.RoomDatabase
  * Version 1 is [ScanResultEntity] only. Version 2 adds the [ScanStore] tables
  * ([MediaItemEntity], [ScanCheckpointEntity], [ScanRunEntity],
  * [TypeProgressEntity]) through [MIGRATION_1_2] and does not rewrite
- * `scan_results`. Version 3 adds `scan_results.analysis_outcome` through
- * [MIGRATION_2_3]. Do not turn on destructive migration: a schema change has
- * to keep rows the user has marked kept.
+ * `scan_results`. Version 3 adds `scan_results.analysis_outcome` and
+ * `failure_count` through [MIGRATION_2_3]. Do not turn on destructive
+ * migration: a schema change has to keep rows the user has marked kept.
  *
  * [exportSchema] writes one JSON file per version under `schemas/`. Those
  * files are checked in.

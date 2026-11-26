@@ -438,7 +438,9 @@ class RoomScanStoreTest {
                     "(5, 'Image', 'content://media/external/images/media/5', 'People', 2.0, " +
                     "'mlkit-face-count|face-v1', 5000, 'Trashed'), " +
                     "(6, 'Image', 'content://media/external/images/media/6', 'Unflagged', 0.0, " +
-                    "'old-rule', 6000, 'Pending')",
+                    "'old-rule', 6000, 'Pending'), " +
+                    "(7, 'Image', 'content://media/external/images/media/7', 'Unflagged', 0.0, " +
+                    "'none', 7000, 'Trashed')",
             )
             db.execSQL(
                 "INSERT INTO media_item (type, media_id, uri, date_added, size, path, mime_type, removed) " +
@@ -474,26 +476,42 @@ class RoomScanStoreTest {
             assertEquals(ScanCategory.Sensitive, scored.category)
             assertEquals(0.91f, scored.confidence, 0.0001f)
 
-            // Version 2 stored a failed decode and a clean photo the same way.
-            // Both are marked Failed so they are not counted as clean. The
-            // pending one is a rescan key. The kept one stays Kept.
+            // Only a pending Unflagged/none row is marked Failed. Kept and
+            // trashed copies of that same pair stay Scored.
             val ambiguous = migrated.scanResultDao().find(3, MediaType.Image)
             assertEquals(ReviewStatus.Pending, ambiguous!!.reviewStatus)
             assertEquals(AnalysisOutcome.Failed, ambiguous.analysisOutcome)
+            assertEquals(0, ambiguous.failureCount)
             assertEquals(ScanCategory.Unflagged, ambiguous.category)
             assertEquals(MODEL_VERSION_NONE, ambiguous.modelVersion)
             assertEquals(3000L, ambiguous.scannedAtEpochMillis)
 
             val keptClean = migrated.scanResultDao().find(4, MediaType.Image)
             assertEquals(ReviewStatus.Kept, keptClean!!.reviewStatus)
-            assertEquals(AnalysisOutcome.Failed, keptClean.analysisOutcome)
+            assertEquals(AnalysisOutcome.Scored, keptClean.analysisOutcome)
+            assertEquals(0, keptClean.failureCount)
+            assertEquals(ScanCategory.Unflagged, keptClean.category)
+            assertEquals(0f, keptClean.confidence, 0.0001f)
             assertEquals(MODEL_VERSION_NONE, keptClean.modelVersion)
+            assertEquals(4000L, keptClean.scannedAtEpochMillis)
             assertEquals("content://media/external/images/media/4", keptClean.contentUri)
 
             val trashed = migrated.scanResultDao().find(5, MediaType.Image)
             assertEquals(ReviewStatus.Trashed, trashed!!.reviewStatus)
             assertEquals(AnalysisOutcome.Scored, trashed.analysisOutcome)
+            assertEquals(0, trashed.failureCount)
             assertEquals("mlkit-face-count|face-v1", trashed.modelVersion)
+            assertEquals(2f, trashed.confidence, 0.0001f)
+            assertEquals(5000L, trashed.scannedAtEpochMillis)
+
+            val trashedClean = migrated.scanResultDao().find(7, MediaType.Image)
+            assertEquals(ReviewStatus.Trashed, trashedClean!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Scored, trashedClean.analysisOutcome)
+            assertEquals(0, trashedClean.failureCount)
+            assertEquals(ScanCategory.Unflagged, trashedClean.category)
+            assertEquals(MODEL_VERSION_NONE, trashedClean.modelVersion)
+            assertEquals(7000L, trashedClean.scannedAtEpochMillis)
+            assertEquals("content://media/external/images/media/7", trashedClean.contentUri)
 
             val namedUnflagged = migrated.scanResultDao().find(6, MediaType.Image)
             assertEquals(AnalysisOutcome.Scored, namedUnflagged!!.analysisOutcome)
@@ -531,9 +549,11 @@ class RoomScanStoreTest {
             )
             val keptAfterUpsert = migrated.scanResultDao().find(1, MediaType.Image)
             assertEquals(ReviewStatus.Kept, keptAfterUpsert!!.reviewStatus)
-            assertEquals(ScanCategory.Screenshot, keptAfterUpsert.category)
-            assertEquals(0.25f, keptAfterUpsert.confidence, 0.0001f)
+            assertEquals(ScanCategory.Sensitive, keptAfterUpsert.category)
+            assertEquals(0.99f, keptAfterUpsert.confidence, 0.0001f)
+            assertEquals("nsfw-9", keptAfterUpsert.modelVersion)
             assertEquals(AnalysisOutcome.Scored, keptAfterUpsert.analysisOutcome)
+            assertEquals(0, keptAfterUpsert.failureCount)
 
             assertEquals(ScanPhase.Completed, migratedStore.readRun().phase)
             assertEquals("v1", migratedStore.readRun().mediaStoreVersion)

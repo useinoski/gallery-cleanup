@@ -83,7 +83,9 @@ class ScanSchemaExportTest {
         val text = schema.readText()
         assertTrue(text.contains("\"version\": 3"))
         assertTrue(text.contains("\"columnName\": \"analysis_outcome\""))
+        assertTrue(text.contains("\"columnName\": \"failure_count\""))
         assertTrue(text.contains("\"defaultValue\": \"'Scored'\""))
+        assertTrue(text.contains("\"defaultValue\": \"0\""))
         assertTrue(
             text.contains("\"name\": \"index_scan_results_analysis_outcome_model_version\""),
         )
