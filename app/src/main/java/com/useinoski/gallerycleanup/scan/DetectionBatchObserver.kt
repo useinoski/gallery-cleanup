@@ -1,18 +1,21 @@
 package com.useinoski.gallerycleanup.scan
 
 import android.util.Log
-import com.useinoski.gallerycleanup.data.RoomScanResultStore
+import com.useinoski.gallerycleanup.data.AnalysisFailure
 import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.data.ScanResult
 import com.useinoski.gallerycleanup.media.ScanBatchObserver
 import com.useinoski.gallerycleanup.model.MediaItem
 import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 
 /**
@@ -20,19 +23,23 @@ import kotlinx.coroutines.sync.withPermit
  *
  * The scanner can deliver the same page again. A crash after this returns
  * and before the checkpoint is saved is the case the scan contract describes.
- * [RoomScanResultStore.upsert] replaces a pending row with the same
- * [MediaKey], so the second delivery does not insert a second row. A row the
- * user has marked kept is skipped and is not rewritten.
+ * [AnalysisRecords.upsert] replaces a pending row with the same [MediaKey],
+ * so the second delivery does not insert a second row. A row the user has
+ * marked kept is skipped and is not rewritten.
  *
  * Videos and audio are not decoded. Videos go to [ScanCategory.Video] and
  * audio goes to [ScanCategory.Audio], which are the manual-review buckets
- * already on the review row. Photos go through [classifyImage].
+ * already on the review row. Photos go through [classifyImage]. A photo that
+ * scores as clean is still [ScanCategory.Unflagged] with [FlagPolicy.NONE],
+ * written by [AnalysisRecords.upsert].
  *
- * A failure on one item becomes [ScanCategory.Unflagged] with model version
- * [FlagPolicy.NONE]. It does not fail the batch. The scanner treats an
- * exception from this method as a failed scan, so the exception stays here.
- * [CancellationException] is rethrown. Cancelling the worker must stop the
- * page, not record the cancelled item as unflagged.
+ * A failure on one item is [AnalysisRecords.recordFailures], not a clean
+ * photo. It does not fail the batch. [CancellationException] is rethrown.
+ * Cancelling the worker must stop the page, not record the cancelled item
+ * as a failure. [SecurityException] stops the page the same way and writes
+ * nothing for it: the scanner records access revoked. A sibling that already
+ * finished in this page is discarded with the rest. Partial photo access is
+ * not a [SecurityException]; MediaStore just returns the smaller library.
  *
  * At most [parallelism] images are decoded at once. The detectors hop to
  * their own dispatcher inside `classify`, so a dispatcher view would not
@@ -40,10 +47,10 @@ import kotlinx.coroutines.sync.withPermit
  * for the whole item, including the suspend inside the model.
  */
 internal class DetectionBatchObserver(
-    private val results: RoomScanResultStore,
-    private val classifyImage: suspend (MediaItem) -> ImageSignals,
+    private val results: AnalysisRecords,
     private val parallelism: Int = PARALLELISM,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val classifyImage: suspend (MediaItem) -> ImageSignals,
 ) : ScanBatchObserver {
     init {
         require(parallelism > 0) { "parallelism must be positive" }
@@ -63,23 +70,51 @@ internal class DetectionBatchObserver(
             if (key !in kept) pending += item
         }
         if (pending.isEmpty()) return
-        val written = coroutineScope {
+        val revoked = AtomicReference<SecurityException?>(null)
+        val outcomes = ArrayList<ItemOutcome>(pending.size)
+        val sink = Mutex()
+        supervisorScope {
             pending.map { item ->
                 async {
                     slots.withPermit {
+                        if (revoked.get() != null) return@withPermit
                         try {
-                            toResult(item)
+                            val scored = ItemOutcome.Scored(toResult(item))
+                            sink.withLock {
+                                if (revoked.get() == null) outcomes += scored
+                            }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
+                        } catch (failure: SecurityException) {
+                            revoked.compareAndSet(null, failure)
                         } catch (failure: Exception) {
                             Log.w(TAG, "item ${item.type} ${item.id} was not classified", failure)
-                            unflagged(item)
+                            val failed = ItemOutcome.Failed(
+                                AnalysisFailure(
+                                    key = MediaKey(item.type, item.id),
+                                    contentUri = item.uri,
+                                    scannedAtEpochMillis = clock(),
+                                ),
+                            )
+                            sink.withLock {
+                                if (revoked.get() == null) outcomes += failed
+                            }
                         }
                     }
                 }
             }.awaitAll()
         }
-        results.upsert(written)
+        revoked.get()?.let { failure -> throw failure }
+        val scored = ArrayList<ScanResult>(outcomes.size)
+        val failed = ArrayList<AnalysisFailure>(outcomes.size)
+        for (outcome in outcomes) {
+            when (outcome) {
+                is ItemOutcome.Scored -> scored += outcome.result
+                is ItemOutcome.Failed -> failed += outcome.failure
+            }
+        }
+        if (scored.isNotEmpty()) results.upsert(scored)
+        if (failed.isNotEmpty()) results.recordFailures(failed)
     }
 
     private suspend fun toResult(item: MediaItem): ScanResult {
@@ -89,10 +124,6 @@ internal class DetectionBatchObserver(
             MediaType.Image -> FlagPolicy.decide(classifyImage(item))
         }
         return row(item, decision)
-    }
-
-    private fun unflagged(item: MediaItem): ScanResult {
-        return row(item, FlagDecision(ScanCategory.Unflagged, 0f, FlagPolicy.NONE))
     }
 
     private fun row(item: MediaItem, decision: FlagDecision): ScanResult {
@@ -105,6 +136,11 @@ internal class DetectionBatchObserver(
             modelVersion = decision.modelVersion,
             scannedAtEpochMillis = clock(),
         )
+    }
+
+    private sealed interface ItemOutcome {
+        data class Scored(val result: ScanResult) : ItemOutcome
+        data class Failed(val failure: AnalysisFailure) : ItemOutcome
     }
 
     private companion object {

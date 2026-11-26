@@ -15,15 +15,21 @@ import kotlinx.coroutines.withContext
 /**
  * Runs the three on-device detectors on one upright, downscaled bitmap.
  *
- * The detectors are created once and reused. Loading the LiteRT model on
- * every batch would dominate the scan. Each detector locks itself, so two
+ * The detectors are created once for the scan and reused across its batches.
+ * Loading the LiteRT model on every batch would dominate the scan. Each
+ * detector locks itself, so two
  * images may call in. They do not run on the main thread. Their own
  * `classify` checks that.
  *
  * One detector throwing does not drop the other scores. A face failure can
  * still leave an NSFW hit, and the other way around. Decode failures
- * propagate. The observer turns those into an unflagged row so the scan
- * continues.
+ * propagate. The observer records those with [AnalysisRecords.recordFailures]
+ * so the scan continues and the file is not stored as a clean photo.
+ *
+ * [SecurityException] also propagates. That is access disappearing
+ * mid-decode, not a bad file. [close] releases every detector. The scan
+ * calls it when the pass ends, fails, or is cancelled. The next pass builds
+ * a new classifier. PR #8 frees the Marqo interpreter only from [close].
  */
 internal class OnDeviceImageClassifier(
     context: Context,
@@ -58,10 +64,21 @@ internal class OnDeviceImageClassifier(
         }
     }
 
+    /** Versions this classifier writes, plus the rule names and [FlagPolicy.NONE]. */
+    fun currentModelVersions(): Set<String> = pipelineModelVersions(listOf(nsfw, faces, labels))
+
     override fun close() {
-        nsfw.close()
-        faces.close()
-        labels.close()
+        // One close() throwing must not skip the others. The Marqo thread
+        // is released only from close.
+        try {
+            nsfw.close()
+        } finally {
+            try {
+                faces.close()
+            } finally {
+                labels.close()
+            }
+        }
     }
 
     private suspend fun runDetector(
@@ -75,6 +92,8 @@ internal class OnDeviceImageClassifier(
             block()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (revoked: SecurityException) {
+            throw revoked
         } catch (failure: Exception) {
             Log.w(TAG, "detector $name failed for ${item.type} ${item.id}", failure)
             null

@@ -27,27 +27,42 @@ import kotlinx.coroutines.CancellationException
  * stop is a checkpoint rather than a notification. On Android 12 and higher
  * WorkManager would otherwise implement expedited work with a foreground
  * service of type dataSync. We do not ask it to.
+ *
+ * [LibraryScan.run] closes the detectors when the pass ends, fails, or is
+ * cancelled.
  */
-class LibraryScanWorker(
+class LibraryScanWorker internal constructor(
     context: Context,
     params: WorkerParameters,
-    private val scanner: LibraryScanner,
+    private val scan: LibraryScan,
 ) : CoroutineWorker(context, params) {
 
     constructor(context: Context, params: WorkerParameters) : this(
         context,
         params,
-        ScanRuntime.scanner(context),
+        ScanRuntime.open(context),
+    )
+
+    constructor(
+        context: Context,
+        params: WorkerParameters,
+        scanner: LibraryScanner,
+    ) : this(
+        context,
+        params,
+        LibraryScan(scanner),
     )
 
     override suspend fun doWork(): Result {
         return try {
-            scanner.scan()
+            scan.run()
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
             // The scanner has already recorded Failed, and it kept the checkpoint.
+            // Access revoked is recorded and not rethrown, so it is a success
+            // here and WorkManager does not retry a scan the user cannot authorize.
             Result.failure()
         }
     }

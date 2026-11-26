@@ -81,6 +81,28 @@ class RoomScanStoreTest {
     }
 
     @Test
+    fun presentItemsSkipsMissingAndRemovedRowsAndKeepsRequestOrder() = runBlocking {
+        val image = item(MediaType.Image, 4, size = 8)
+        val video = item(MediaType.Video, 4, size = 2)
+        val gone = item(MediaType.Image, 5)
+        store.upsertBatch(listOf(image, video, gone))
+        store.markRemoved(listOf(MediaKey(MediaType.Image, 5)))
+
+        val found = store.presentItems(
+            listOf(
+                MediaKey(MediaType.Video, 4),
+                MediaKey(MediaType.Image, 5),
+                MediaKey(MediaType.Image, 9),
+                MediaKey(MediaType.Image, 4),
+                MediaKey(MediaType.Video, 4),
+            ),
+        )
+
+        assertEquals(listOf(video, image), found)
+        assertEquals(emptyList<MediaItem>(), store.presentItems(emptyList()))
+    }
+
+    @Test
     fun emptyWritesAreNoOps() = runBlocking {
         store.upsertBatch(emptyList())
         store.markRemoved(emptyList())

@@ -160,6 +160,34 @@ class RoomScanResultStore internal constructor(
         ).map { row -> MediaKey(type = row.mediaType, id = row.mediaStoreId) }
     }
 
+    /**
+     * Stored library rows for [keys] that are still present.
+     *
+     * Missing keys and rows [markRemoved] has flagged are omitted. The file
+     * bytes are not opened. Order matches the first time each key appears
+     * in [keys]. The scanner uses this to turn [keysNeedingRescan] into
+     * items it can classify. A key with no row here is skipped.
+     */
+    suspend fun presentItems(keys: Collection<MediaKey>): List<MediaItem> {
+        if (keys.isEmpty()) return emptyList()
+        val found = HashMap<MediaKey, MediaItem>(keys.size)
+        keys.groupBy { key -> key.type }.forEach { (type, grouped) ->
+            grouped.map { key -> key.id }.distinct().chunked(ID_CHUNK).forEach { ids ->
+                for (row in scans.presentMedia(type, ids)) {
+                    val item = row.toItem()
+                    found[MediaKey(item.type, item.id)] = item
+                }
+            }
+        }
+        val ordered = ArrayList<MediaItem>(found.size)
+        val seen = HashSet<MediaKey>(found.size)
+        for (key in keys) {
+            if (!seen.add(key)) continue
+            found[key]?.let { item -> ordered += item }
+        }
+        return ordered
+    }
+
     /** One current version. Same rules as [keysNeedingRescan]. */
     suspend fun keysNeedingRescan(currentModelVersion: String): List<MediaKey> {
         require(currentModelVersion.isNotBlank()) { "Model version is required." }

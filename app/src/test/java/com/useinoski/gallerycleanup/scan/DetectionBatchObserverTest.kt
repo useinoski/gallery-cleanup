@@ -116,14 +116,23 @@ class DetectionBatchObserverTest {
 
         assertEquals(1, pending(ScanCategory.People).count { it.mediaStoreId == ok.id })
         assertEquals(1, pending(ScanCategory.Video).count { it.mediaStoreId == alsoOk.id })
-        val failed = pending(ScanCategory.Unflagged).single { it.mediaStoreId == broken.id }
-        assertEquals(0f, failed.confidence, 0.0001f)
-        assertEquals(FlagPolicy.NONE, failed.modelVersion)
+        assertTrue(pending(ScanCategory.Unflagged).none { it.mediaStoreId == broken.id })
+        val person = pending(ScanCategory.People).single { it.mediaStoreId == ok.id }
+        val again = store.keysNeedingRescan(
+            setOf(person.modelVersion, FlagPolicy.VIDEO_RULE, FlagPolicy.NONE),
+        )
+        assertTrue(again.contains(MediaKey(MediaType.Image, broken.id)))
+        assertTrue(again.none { key -> key.id == ok.id || key.id == alsoOk.id })
 
         val repaired = observer { peopleSignals(1f) }
         repaired.onBatch(listOf(broken))
         assertTrue(pending(ScanCategory.Unflagged).none { it.mediaStoreId == broken.id })
         assertEquals(1, pending(ScanCategory.People).count { it.mediaStoreId == broken.id })
+        assertTrue(
+            store.keysNeedingRescan(
+                setOf(person.modelVersion, FlagPolicy.VIDEO_RULE, FlagPolicy.NONE),
+            ).none { key -> key.id == broken.id },
+        )
     }
 
     @Test
@@ -170,6 +179,9 @@ class DetectionBatchObserverTest {
         job.join()
         assertTrue(pending(ScanCategory.Unflagged).none { it.mediaStoreId == image.id })
         assertTrue(pending(ScanCategory.People).none { it.mediaStoreId == image.id })
+        assertTrue(
+            store.keysNeedingRescan(setOf(FlagPolicy.NONE)).none { key -> key.id == image.id },
+        )
     }
 
     @Test
@@ -215,7 +227,7 @@ class DetectionBatchObserverTest {
         parallelism: Int = 1,
         classify: suspend (MediaItem) -> ImageSignals,
     ) = DetectionBatchObserver(
-        results = store,
+        results = RoomAnalysisRecords(store),
         classifyImage = classify,
         parallelism = parallelism,
         clock = { clock.get().toLong() },
