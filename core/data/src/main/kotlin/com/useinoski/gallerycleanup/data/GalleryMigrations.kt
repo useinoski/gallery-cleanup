@@ -12,7 +12,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * schema against the entity definition.
  *
  * Version 3 is [MIGRATION_2_3]. It adds `analysis_outcome` and does not
- * delete rows.
+ * delete rows. Version 4 is [MIGRATION_3_4]. It does not change the schema.
+ * It restores clean rows that an earlier copy of version 3 marked failed.
  */
 val MIGRATION_1_2: Migration = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -76,17 +77,20 @@ val MIGRATION_1_2: Migration = object : Migration(1, 2) {
  * Version 3 adds `scan_results.analysis_outcome`, `failure_count`, and an
  * index for the rescan query. Other tables are not rewritten.
  *
- * Every existing row starts as `Scored`, with `failure_count` 0. Version 2
- * could not tell a failed decode from a clean photo: both were category
- * `Unflagged` and model version `none` ([MODEL_VERSION_NONE]). Only rows
- * still [ReviewStatus.Pending] are set to `Failed`, so they leave the clean
- * count and [RoomScanResultStore.keysNeedingRescan] returns them. Kept and
- * trashed rows are not rewritten: a decision the user already made stays
- * `Scored` and is not queued for another pass.
+ * Every existing row stays [AnalysisOutcome.Scored], with `failure_count` 0.
+ * The column defaults and the new index are the ones Room exports in `3.json`.
+ *
+ * Version 2 wrote a clean photo and a failed decode as the same row:
+ * [ReviewStatus.Pending], [ScanCategory.Unflagged], confidence 0, and model
+ * version [MODEL_VERSION_NONE]. No column tells those rows apart, so this
+ * migration does not mark them [AnalysisOutcome.Failed]. That used to queue
+ * every clean photo for [RoomScanResultStore.keysNeedingRescan]. A real
+ * version-2 failure stays `Scored` with model version `none`. The rescan
+ * query returns it once `none` is no longer a version the pipeline writes.
  *
  * Category, score, URI, model version, time, and review status are not
- * changed. The `ADD COLUMN` defaults and the new index are the ones Room
- * exports in `3.json`.
+ * changed. Devices that already ran the old statement are repaired by
+ * [MIGRATION_3_4].
  */
 val MIGRATION_2_3: Migration = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -98,17 +102,46 @@ val MIGRATION_2_3: Migration = object : Migration(2, 3) {
         )
         db.execSQL(
             """
-            UPDATE `scan_results`
-            SET `analysis_outcome` = 'Failed'
-            WHERE `category` = 'Unflagged'
-                AND `model_version` = 'none'
-                AND `review_status` = 'Pending'
-            """.trimIndent(),
-        )
-        db.execSQL(
-            """
             CREATE INDEX IF NOT EXISTS `index_scan_results_analysis_outcome_model_version`
             ON `scan_results` (`analysis_outcome`, `model_version`)
+            """.trimIndent(),
+        )
+    }
+}
+
+/**
+ * Version 4 does not change tables, columns, or indexes. `4.json` is the
+ * version 3 schema with the version number bumped.
+ *
+ * The first release of [MIGRATION_2_3] set `analysis_outcome` to `Failed` on
+ * every pending [ScanCategory.Unflagged] row whose model version was
+ * [MODEL_VERSION_NONE], and it left `failure_count` at 0. Those rows are
+ * clean photos and failed decodes mixed together. Devices that already
+ * applied that statement are on version 3, so this migration puts the clean
+ * shape back to [AnalysisOutcome.Scored].
+ *
+ * The rewrite is limited to rows [RoomScanResultStore.recordFailure] cannot
+ * have written. That method is the only writer of `Failed`, and it stores a
+ * `failure_count` of at least 1. A scored [RoomScanResultStore.upsert] sets
+ * the count back to 0 and stores `Scored`, so a clean rescan is not updated
+ * again. A rescan that failed stays `Failed` because its count is at least 1.
+ * A `Failed` row with count 0 and any other category or model version is
+ * left alone: version 2 and [RoomScanResultStore.recordFailure] never wrote
+ * that shape.
+ *
+ * Review status, category, score, URI, model version, time, and
+ * `failure_count` are not changed.
+ */
+val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            UPDATE `scan_results`
+            SET `analysis_outcome` = 'Scored'
+            WHERE `analysis_outcome` = 'Failed'
+                AND `failure_count` = 0
+                AND `category` = 'Unflagged'
+                AND `model_version` = 'none'
             """.trimIndent(),
         )
     }

@@ -18,7 +18,7 @@ Keys are `model.MediaKey` (`type`, then `id`). There is no `data.MediaKey`. The 
 
 ## Tables
 
-Version 1 is `scan_results` only. Version 2 adds the scan tables and does not rewrite `scan_results`. `MIGRATION_1_2` is that path. Version 3 adds `scan_results.analysis_outcome` and `failure_count`. `MIGRATION_2_3` keeps every existing row. Old pending `Unflagged` rows whose model version is `none` become `Failed`, because version 2 used that pair both for a clean photo and for a decode that threw. Kept and trashed rows stay `Scored`. Schema JSON for all three versions is checked in under `schemas/` because `exportSchema = true`. Do not enable destructive migration. Kept rows have to survive a schema change.
+Version 1 is `scan_results` only. Version 2 adds the scan tables and does not rewrite `scan_results`. `MIGRATION_1_2` is that path. Version 3 adds `scan_results.analysis_outcome` and `failure_count`. `MIGRATION_2_3` keeps every existing row as `Scored`. Version 2 stored a clean photo and a failed decode as the same pending `Unflagged` row with model version `none`, so the migration does not mark that pair `Failed`. Version 4 does not change the schema. `MIGRATION_3_4` puts a `Failed` `Unflagged` row whose model version is `none` back to `Scored` when `failure_count` is still 0. That is the shape the first release of `MIGRATION_2_3` wrote for every clean photo. A real failure written by `recordFailure` has a count of at least 1 and stays `Failed`. Schema JSON for all four versions is checked in under `schemas/` because `exportSchema = true`. Do not enable destructive migration. Kept rows have to survive a schema change.
 
 | Table | Role |
 | --- | --- |

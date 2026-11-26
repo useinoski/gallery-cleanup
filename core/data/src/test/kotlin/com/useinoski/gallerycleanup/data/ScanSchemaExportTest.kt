@@ -1,5 +1,6 @@
 package com.useinoski.gallerycleanup.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -93,5 +94,42 @@ class ScanSchemaExportTest {
             "the database must not store a binary copy of the media",
             text.contains("\"affinity\": \"BLOB\""),
         )
+    }
+
+    @Test
+    fun versionFourKeepsTheVersionThreeSchema() {
+        val three = schemaFile("3.json")
+        val four = schemaFile("4.json")
+        val threeText = three.readText()
+        val fourText = four.readText()
+        assertTrue(fourText.contains("\"version\": 4"))
+        assertTrue(fourText.contains("\"columnName\": \"analysis_outcome\""))
+        assertTrue(fourText.contains("\"columnName\": \"failure_count\""))
+        assertTrue(fourText.contains("\"defaultValue\": \"'Scored'\""))
+        assertTrue(
+            fourText.contains("\"name\": \"index_scan_results_analysis_outcome_model_version\""),
+        )
+        assertEquals(identityHash(threeText), identityHash(fourText))
+        assertFalse(
+            "the database must not store a binary copy of the media",
+            fourText.contains("\"affinity\": \"BLOB\""),
+        )
+    }
+
+    private fun schemaFile(name: String): File {
+        return File("schemas").walkTopDown()
+            .filter { file -> file.isFile && file.name == name }
+            .singleOrNull()
+            ?: error("Room schema export for $name is missing under core/data/schemas.")
+    }
+
+    private fun identityHash(text: String): String {
+        val marker = "\"identityHash\": \""
+        val start = text.indexOf(marker)
+        check(start >= 0) { "schema export has no identityHash" }
+        val from = start + marker.length
+        val end = text.indexOf('"', from)
+        check(end > from) { "schema export has a truncated identityHash" }
+        return text.substring(from, end)
     }
 }

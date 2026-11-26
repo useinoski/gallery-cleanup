@@ -12,8 +12,12 @@ import androidx.room.RoomDatabase
  * ([MediaItemEntity], [ScanCheckpointEntity], [ScanRunEntity],
  * [TypeProgressEntity]) through [MIGRATION_1_2] and does not rewrite
  * `scan_results`. Version 3 adds `scan_results.analysis_outcome` and
- * `failure_count` through [MIGRATION_2_3]. Do not turn on destructive
- * migration: a schema change has to keep rows the user has marked kept.
+ * `failure_count` through [MIGRATION_2_3] and leaves every existing row
+ * [AnalysisOutcome.Scored]. Version 4 is [MIGRATION_3_4]. It does not change
+ * the schema. It puts back to `Scored` the rows an earlier copy of
+ * [MIGRATION_2_3] marked `Failed` while `failure_count` was still 0.
+ * Do not turn on destructive migration: a schema change has to keep rows
+ * the user has marked kept.
  *
  * [exportSchema] writes one JSON file per version under `schemas/`. Those
  * files are checked in.
@@ -29,7 +33,7 @@ import androidx.room.RoomDatabase
         ScanRunEntity::class,
         TypeProgressEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class GalleryDatabase : RoomDatabase() {
@@ -55,7 +59,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                         context.applicationContext,
                         GalleryDatabase::class.java,
                         NAME,
-                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                         .build()
                         .also { created -> instance = created }
                 }

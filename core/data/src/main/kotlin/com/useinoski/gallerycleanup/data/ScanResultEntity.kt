@@ -45,7 +45,8 @@ data class ScanResultEntity(
     /**
      * `Scored` unless [RoomScanResultStore.recordFailure] wrote the row.
      * The SQL default matches [MIGRATION_2_3], which adds the column as
-     * `Scored` and then marks pending `Unflagged` / `none` rows `Failed`.
+     * `Scored`. [MIGRATION_3_4] puts a `Failed` row back to `Scored` only
+     * when `failure_count` is 0 and the row is still `Unflagged` / `none`.
      */
     @ColumnInfo(name = "analysis_outcome", defaultValue = "'Scored'")
     val analysisOutcome: AnalysisOutcome,

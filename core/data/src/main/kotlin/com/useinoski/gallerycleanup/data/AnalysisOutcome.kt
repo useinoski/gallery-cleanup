@@ -29,7 +29,9 @@ enum class AnalysisOutcome {
  * placeholder [RoomScanResultStore.recordFailure] writes.
  *
  * The two cases share this string. [AnalysisOutcome] is what tells them
- * apart. Version 2 stored both as [ScanCategory.Unflagged] plus this text,
- * which is why [MIGRATION_2_3] marks those old rows [AnalysisOutcome.Failed].
+ * apart. Version 2 stored both as [ScanCategory.Unflagged] plus this text.
+ * [MIGRATION_2_3] leaves that pair [AnalysisOutcome.Scored], because a clean
+ * photo cannot be picked out of it. [MIGRATION_3_4] restores rows an earlier
+ * migration marked [AnalysisOutcome.Failed] with `failure_count` 0.
  */
 const val MODEL_VERSION_NONE: String = "none"
