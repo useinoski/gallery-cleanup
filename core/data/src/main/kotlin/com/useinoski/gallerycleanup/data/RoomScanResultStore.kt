@@ -1,6 +1,7 @@
 package com.useinoski.gallerycleanup.data
 
 import androidx.room.withTransaction
+import com.useinoski.gallerycleanup.model.MediaCategory
 import com.useinoski.gallerycleanup.model.MediaItem
 import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
@@ -27,12 +28,15 @@ import kotlinx.coroutines.flow.map
  * The review API is not part of [ScanStore]. It uses `scan_results`:
  * [upsert], [recordFailure], [markKept], [markTrashed], [markPending],
  * [remove], [resetReviewed], [keptKeys], [keysNeedingRescan],
- * [observePending], and [observePendingCounts]. [upsert] stores
+ * [observePending], and [observePendingCounts]. [replaceCategories] writes
+ * the [MediaCategory] set for one item in `item_category`. An empty set
+ * deletes those rows and leaves the review row as it is. [upsert] stores
  * [ReviewStatus.Pending] and [AnalysisOutcome.Scored] for a new or pending
  * row, and it keeps an existing kept or trashed decision. [recordFailure]
  * stores [AnalysisOutcome.Failed] for one key and leaves a kept row alone.
  * [remove] deletes a review row after the
- * system trash dialog succeeds. It is not [markRemoved].
+ * system trash dialog succeeds. It is not [markRemoved]. The same call
+ * deletes that key's `item_category` rows.
  *
  * Writes are chunked. SQLite rejects a statement with too many `?`
  * placeholders (999 on older builds). A trash batch can be up to 2000 URIs.
@@ -45,6 +49,7 @@ class RoomScanResultStore internal constructor(
 
     private val results = database.scanResultDao()
     private val scans = database.scanStoreDao()
+    private val itemCategories = database.itemCategoryDao()
 
     /**
      * Inserts or replaces each result, matched on [MediaKey].
@@ -212,6 +217,47 @@ class RoomScanResultStore internal constructor(
     }
 
     /**
+     * Items that have [category] and are still [ReviewStatus.Pending], newest
+     * scan first. Membership is a row in `item_category`, so one file can
+     * appear under more than one category.
+     *
+     * An item with no category rows is absent from every list this method
+     * serves. That empty set is not a clean score. [ScanCategory.Unflagged],
+     * audio that has not been split, and a failed analysis can all have no
+     * category rows. Outcome and `failure_count` stay on `scan_results`.
+     * Access revoked stays on the scan run. Kept, trashed, failed, and
+     * removed rows are absent.
+     *
+     * The flow emits the current list, then emits again when `item_category`,
+     * `scan_results`, or `media_item` changes. Nothing is queried until a
+     * collector starts.
+     */
+    fun observePending(category: MediaCategory): Flow<List<ScanResult>> {
+        return itemCategories.observePending(
+            category = category,
+            status = ReviewStatus.Pending,
+            failedOutcome = AnalysisOutcome.Failed,
+        ).map { rows -> rows.map(ScanResultEntity::toResult) }
+    }
+
+    /**
+     * Replaces the [MediaCategory] set stored for [key].
+     *
+     * The previous rows for that key are deleted, then one row is inserted
+     * per category. An empty [categories] leaves no rows for the key.
+     * `scan_results` is left as it is: [AnalysisOutcome], `failure_count`,
+     * [ReviewStatus], and [ScanCategory] stay on that table. A failed item
+     * can carry categories and it is still failed.
+     */
+    suspend fun replaceCategories(key: MediaKey, categories: Set<MediaCategory>) {
+        itemCategories.replace(
+            mediaStoreId = key.id,
+            mediaType = key.type,
+            categories = categories,
+        )
+    }
+
+    /**
      * Pending counts for every category, including zeros. Kept, trashed,
      * failed, and removed rows are not counted. A removed row is counted
      * again after [upsertBatch] marks that media item present. Emits again
@@ -250,6 +296,7 @@ class RoomScanResultStore internal constructor(
     /**
      * Deletes these review rows after the system trash request succeeds.
      * This drops the score only. The photo bytes were never stored here.
+     * Category rows for the same keys are deleted in the same transaction.
      * Works for any status, so only pass the keys the dialog just trashed.
      */
     suspend fun remove(keys: Collection<MediaKey>) {
@@ -257,6 +304,7 @@ class RoomScanResultStore internal constructor(
         database.withTransaction {
             keys.groupBy { key -> key.type }.forEach { (type, grouped) ->
                 grouped.map { key -> key.id }.distinct().chunked(ID_CHUNK).forEach { ids ->
+                    itemCategories.deleteByTypeAndIds(type, ids)
                     results.deleteByTypeAndIds(type, ids)
                 }
             }

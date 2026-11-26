@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 
 /**
  * On-device scan database.
@@ -12,8 +13,10 @@ import androidx.room.RoomDatabase
  * ([MediaItemEntity], [ScanCheckpointEntity], [ScanRunEntity],
  * [TypeProgressEntity]) through [MIGRATION_1_2] and does not rewrite
  * `scan_results`. Version 3 adds `scan_results.analysis_outcome` and
- * `failure_count` through [MIGRATION_2_3]. Do not turn on destructive
- * migration: a schema change has to keep rows the user has marked kept.
+ * `failure_count` through [MIGRATION_2_3]. Version 4 adds [ItemCategoryEntity]
+ * through [MIGRATION_3_4] and does not rewrite `scan_results`. Do not turn on
+ * destructive migration: a schema change has to keep rows the user has marked
+ * kept.
  *
  * [exportSchema] writes one JSON file per version under `schemas/`. Those
  * files are checked in.
@@ -28,14 +31,18 @@ import androidx.room.RoomDatabase
         ScanCheckpointEntity::class,
         ScanRunEntity::class,
         TypeProgressEntity::class,
+        ItemCategoryEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
+@TypeConverters(MediaCategoryConverter::class)
 abstract class GalleryDatabase : RoomDatabase() {
     abstract fun scanResultDao(): ScanResultDao
 
     abstract fun scanStoreDao(): ScanStoreDao
+
+    abstract fun itemCategoryDao(): ItemCategoryDao
 
     companion object {
         const val NAME = "scan-results.db"
@@ -55,7 +62,7 @@ abstract class GalleryDatabase : RoomDatabase() {
                         context.applicationContext,
                         GalleryDatabase::class.java,
                         NAME,
-                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                         .build()
                         .also { created -> instance = created }
                 }
