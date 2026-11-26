@@ -21,7 +21,7 @@ const val SCAN_BATCH_SIZE = 40
  * screen shows the same sentence from its string resource.
  */
 const val SCAN_ACCESS_REVOKED_DETAIL =
-    "Media access was removed — grant access to continue scanning"
+    "Media access was removed — grant access to continue scanning."
 internal const val SCAN_FAILED_DETAIL = "The scan failed before it finished."
 
 /**

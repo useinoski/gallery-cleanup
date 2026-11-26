@@ -39,17 +39,17 @@ internal class PendingRescan(
 
     suspend fun afterPass() {
         if (runs.readRun().phase != ScanPhase.Completed) return
-        val keys = records.keysNeedingRescan(currentModelVersions)
-        if (keys.isEmpty()) return
-        val present = resolvePresent(keys).associateBy { item -> MediaKey(item.type, item.id) }
-        val items = ArrayList<MediaItem>(keys.size)
-        val seen = HashSet<MediaKey>(keys.size)
-        for (key in keys) {
-            if (!seen.add(key)) continue
-            present[key]?.let { item -> items += item }
-        }
-        if (items.isEmpty()) return
         try {
+            val keys = records.keysNeedingRescan(currentModelVersions)
+            if (keys.isEmpty()) return
+            val present = resolvePresent(keys).associateBy { item -> MediaKey(item.type, item.id) }
+            val items = ArrayList<MediaItem>(keys.size)
+            val seen = HashSet<MediaKey>(keys.size)
+            for (key in keys) {
+                if (!seen.add(key)) continue
+                present[key]?.let { item -> items += item }
+            }
+            if (items.isEmpty()) return
             for (batch in items.chunked(batchSize)) {
                 coroutineContext.ensureActive()
                 observer.onBatch(batch)
@@ -68,6 +68,17 @@ internal class PendingRescan(
                     detail = SCAN_ACCESS_REVOKED_DETAIL,
                 ),
             )
+        } catch (error: Exception) {
+            // The walk already stored Completed. Record Failed before this
+            // exception reaches the worker, which reports failure.
+            val current = runs.readRun()
+            runs.saveRun(
+                current.copy(
+                    phase = ScanPhase.Failed,
+                    detail = error.message ?: "The scan failed before it finished.",
+                ),
+            )
+            throw error
         }
     }
 }

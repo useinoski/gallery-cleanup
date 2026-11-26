@@ -1,8 +1,13 @@
 package com.useinoski.gallerycleanup.scan
 
+import android.content.Context
+import androidx.work.ListenableWorker.Result
+import androidx.work.WorkerParameters
+import androidx.work.testing.TestListenableWorkerBuilder
 import com.useinoski.gallerycleanup.data.AnalysisOutcome
 import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.media.SCAN_ACCESS_REVOKED_DETAIL
+import com.useinoski.gallerycleanup.media.ScanBatchObserver
 import com.useinoski.gallerycleanup.model.InMemoryScanStore
 import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
@@ -13,6 +18,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.robolectric.RuntimeEnvironment
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -157,6 +163,45 @@ class PendingRescanTest {
         assertTrue(analysis.failureBatches.isEmpty())
         assertEquals("mlkit-face-count|face-v1", analysis.rows.getValue(MediaKey(MediaType.Image, first.id)).version)
         assertEquals(AnalysisOutcome.Failed, analysis.rows.getValue(MediaKey(MediaType.Image, second.id)).outcome)
+    }
+
+    @Test
+    fun aRescanExceptionMarksTheRunFailedAndTheWorkerReturnsFailure() = runTest {
+        val scanStore = completedRun()
+        val analysis = FakeAnalysisRecords()
+        val broken = testItem(4)
+        scanStore.upsertBatch(listOf(broken))
+        analysis.plant(broken, "mlkit-face-count|face-v0", category = ScanCategory.People)
+        val rescan = PendingRescan(
+            records = analysis,
+            runs = scanStore,
+            currentModelVersions = TEST_MODEL_VERSIONS,
+            resolvePresent = { keys -> keys.mapNotNull { key -> scanStore.storedItem(key) } },
+            observer = ScanBatchObserver { error("rescan blew up") },
+        )
+        val scan = LibraryScan {
+            LibraryScan.Pass(
+                scanner = testScanner(ScanMemoryLibrary(emptyList()), scanStore, generation = 4),
+                afterPass = { rescan.afterPass() },
+            )
+        }
+        val context = RuntimeEnvironment.getApplication() as Context
+        val worker = TestListenableWorkerBuilder<LibraryScanWorker>(context)
+            .setWorkerFactory(object : androidx.work.WorkerFactory() {
+                override fun createWorker(
+                    appContext: Context,
+                    workerClassName: String,
+                    workerParameters: WorkerParameters,
+                ) = LibraryScanWorker(appContext, workerParameters, scan)
+            })
+            .build()
+
+        assertEquals(Result.failure(), worker.doWork())
+        val run = scanStore.readRun()
+        assertEquals(ScanPhase.Failed, run.phase)
+        assertEquals("rescan blew up", run.detail)
+        assertEquals("v1", run.mediaStoreVersion)
+        assertEquals(4L, run.completedVolumeGeneration)
     }
 
     private suspend fun completedRun(): InMemoryScanStore {

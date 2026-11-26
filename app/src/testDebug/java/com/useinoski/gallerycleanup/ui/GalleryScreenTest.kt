@@ -288,14 +288,14 @@ class GalleryScreenTest {
                     scan = ScanProgress(
                         phase = ScanPhase.AccessRevoked,
                         byType = emptyList(),
-                        detail = "Media access was removed — grant access to continue scanning",
+                        detail = "Media access was removed — grant access to continue scanning.",
                     ),
                     onStartScan = {},
                     onCancelScan = {},
                 )
             }
         }
-        compose.onNodeWithText("Media access was removed — grant access to continue scanning")
+        compose.onNodeWithText("Media access was removed — grant access to continue scanning.")
             .assertIsDisplayed()
     }
 
@@ -328,7 +328,7 @@ class GalleryScreenTest {
             }
         }
         compose.onNodeWithText("Scan finished. Nothing was deleted.").performScrollTo().assertIsDisplayed()
-        compose.onAllNodesWithText("Media access was removed — grant access to continue scanning")
+        compose.onAllNodesWithText("Media access was removed — grant access to continue scanning.")
             .assertCountEquals(0)
         compose.onNodeWithText("Only the photos and videos you selected are visible. These counts leave out the rest of the library.")
             .performScrollTo()
