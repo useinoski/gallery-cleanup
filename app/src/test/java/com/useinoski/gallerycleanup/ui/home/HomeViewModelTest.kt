@@ -125,6 +125,25 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun openingHomeDoesNotStartAScan() {
+        val scans = FakeScans()
+        HomeViewModel(FakeMediaRepository(), MemoryOnboarding(true), MemoryAudio(false), scans)
+        assertEquals(0, scans.starts)
+        assertEquals(0, scans.cancels)
+        assertEquals(listOf(false), scans.settled)
+    }
+
+    @Test
+    fun pausingTheHostDoesNotCancelTheScan() {
+        val scans = FakeScans()
+        val viewModel = HomeViewModel(FakeMediaRepository(), MemoryOnboarding(true), MemoryAudio(false), scans)
+        viewModel.startScan()
+        viewModel.onHostPaused()
+        assertEquals(1, scans.starts)
+        assertEquals(0, scans.cancels)
+    }
+
+    @Test
     fun scanProgressArrivesOnTheHomeStateAndTheButtonsDelegate() {
         val scans = FakeScans()
         val viewModel = HomeViewModel(FakeMediaRepository(), MemoryOnboarding(true), MemoryAudio(false), scans)
@@ -142,6 +161,24 @@ class HomeViewModelTest {
         viewModel.cancelScan()
         assertEquals(1, scans.starts)
         assertEquals(1, scans.cancels)
+        assertTrue(scans.settled.contains(false))
+    }
+
+    @Test
+    fun queuedWorkStaysActiveWhenTheStoredPhaseSaysCancelled() {
+        val scans = FakeScans()
+        val viewModel = HomeViewModel(FakeMediaRepository(), MemoryOnboarding(true), MemoryAudio(false), scans)
+        scans.publish(
+            ScanProgress(
+                phase = ScanPhase.Cancelled,
+                byType = listOf(TypeProgress(MediaType.Image, scanned = 4, total = 10)),
+                detail = null,
+            ),
+        )
+        scans.setWorkActive(true)
+        assertTrue(viewModel.state.value.scanWorkActive)
+        assertEquals(ScanPhase.Cancelled, viewModel.state.value.scan.phase)
+        assertEquals(4, viewModel.state.value.scan.scanned)
     }
 
     @Test
@@ -205,9 +242,12 @@ private class FakeMediaRepository(
 
 private class FakeScans : ScanControls {
     private val progressState = MutableStateFlow(ScanProgress.from(com.useinoski.gallerycleanup.model.ScanRun.IDLE))
+    private val workState = MutableStateFlow(false)
     override val progress: Flow<ScanProgress> = progressState.asStateFlow()
+    override val workActive: Flow<Boolean> = workState.asStateFlow()
     var starts: Int = 0
     var cancels: Int = 0
+    val settled = mutableListOf<Boolean>()
 
     override fun start() {
         starts += 1
@@ -217,8 +257,16 @@ private class FakeScans : ScanControls {
         cancels += 1
     }
 
+    override suspend fun settleIfIdle(workActive: Boolean) {
+        settled += workActive
+    }
+
     fun publish(progress: ScanProgress) {
         progressState.value = progress
+    }
+
+    fun setWorkActive(active: Boolean) {
+        workState.value = active
     }
 }
 

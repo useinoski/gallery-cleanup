@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,6 +32,7 @@ data class AppUiState(
     val loading: Boolean = true,
     val failed: Boolean = false,
     val scan: ScanProgress = ScanProgress.from(ScanRun.IDLE),
+    val scanWorkActive: Boolean = false,
     val flaggedCounts: CategoryCounts = emptyCategoryCounts(),
 )
 
@@ -74,9 +76,20 @@ class HomeViewModel(
             }
         }
         viewModelScope.launch {
+            scans.workActive.collect { active ->
+                _state.update { current -> current.copy(scanWorkActive = active) }
+            }
+        }
+        viewModelScope.launch {
             flaggedCounts.collect { counts ->
                 _state.update { current -> current.copy(flaggedCounts = counts) }
             }
+        }
+        // No scan is enqueued here. A Running row with no work is the upgrade
+        // case: the previous process died mid-scan, and Cancel used to do
+        // nothing because there was no WorkManager request to cancel.
+        viewModelScope.launch {
+            scans.settleIfIdle(scans.workActive.first())
         }
     }
 
@@ -86,7 +99,17 @@ class HomeViewModel(
 
     fun cancelScan() {
         scans.cancel()
+        // The worker records Cancelled when its coroutine stops. If no worker
+        // is alive, that write never happens. Do it here as well. While the
+        // WorkInfo is still active the screen keeps showing Cancel.
+        viewModelScope.launch { scans.settleIfIdle(workActive = false) }
     }
+
+    /**
+     * The notification shade pauses the activity and, on some phones, stops
+     * it. The scan is not cancelled.
+     */
+    fun onHostPaused() = Unit
 
     fun completeOnboarding() {
         onboardingStore.setComplete()

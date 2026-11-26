@@ -182,6 +182,89 @@ class GalleryScreenTest {
     }
 
     @Test
+    fun activeWorkShowsCancelEvenWhenTheStoredPhaseIsCancelled() {
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Full,
+                        videos = PermissionState.Denied,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = 10, videos = null, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress(
+                        phase = ScanPhase.Cancelled,
+                        byType = listOf(TypeProgress(MediaType.Image, scanned = 4, total = 10)),
+                        detail = null,
+                    ),
+                    workActive = true,
+                    onStartScan = {},
+                    onCancelScan = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Scanning the library on this phone. Nothing is uploaded.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("4 of 10").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Cancel scan").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("Start scan").assertCountEquals(0)
+    }
+
+    @Test
+    fun aCancelledRunWithNoWorkOffersOneStart() {
+        var started = 0
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Full,
+                        videos = PermissionState.Denied,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = 10, videos = null, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress(
+                        phase = ScanPhase.Cancelled,
+                        byType = listOf(TypeProgress(MediaType.Image, scanned = 4, total = 10)),
+                        detail = null,
+                    ),
+                    workActive = false,
+                    onStartScan = { started += 1 },
+                    onCancelScan = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Scan cancelled. Start again to continue from the last saved batch.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        compose.onNodeWithText("Start scan").performScrollTo().performClick()
+        assertTrue(started == 1)
+        compose.onAllNodesWithText("Cancel scan").assertCountEquals(0)
+    }
+
+    @Test
     fun idleScanStartsAndAFinishedScanOffersAnotherPass() {
         var started = 0
         compose.setContent {

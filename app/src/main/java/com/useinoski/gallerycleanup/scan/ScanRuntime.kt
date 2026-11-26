@@ -25,7 +25,10 @@ import com.useinoski.gallerycleanup.prefs.GalleryPreferences
  * The image classifier is not cached. [open] returns a [LibraryScan] whose
  * [ScanPassFactory] builds a new [OnDeviceImageClassifier] at the start of
  * every pass, and [LibraryScan] closes it when that pass ends, fails, or is
- * cancelled.
+ * cancelled. Calling [store] or [open] does not enqueue work. A rescan of
+ * rows the upgrade marked failed runs only inside that pass, after a scan
+ * the user started or WorkManager resumed. It is not a second job, and it
+ * does not start on its own when the database opens.
  * A closed Marqo detector throws if it is used again, so the next pass must
  * not keep the previous instance. The model stays loaded across the batches
  * of the one pass. It is created when the pass starts, not when the home
@@ -86,6 +89,7 @@ internal object ScanRuntime {
                 scanner = scanner,
                 detectors = classifier,
                 afterPass = rescan::afterPass,
+                runs = results,
             )
         } catch (failure: Exception) {
             classifier.close()

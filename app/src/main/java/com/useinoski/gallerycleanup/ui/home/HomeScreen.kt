@@ -35,6 +35,7 @@ import com.useinoski.gallerycleanup.model.MediaType
 import com.useinoski.gallerycleanup.model.PermissionState
 import com.useinoski.gallerycleanup.model.ScanPhase
 import com.useinoski.gallerycleanup.model.ScanProgress
+import com.useinoski.gallerycleanup.scan.scanAppearsRunning
 import java.text.NumberFormat
 
 /**
@@ -58,6 +59,7 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onRetry: () -> Unit,
     scan: ScanProgress,
+    workActive: Boolean = false,
     onStartScan: () -> Unit,
     onCancelScan: () -> Unit,
     flaggedCounts: CategoryCounts = emptyCategoryCounts(),
@@ -105,6 +107,7 @@ fun HomeScreen(
             access = access,
             audioScanningEnabled = audioScanningEnabled,
             scan = scan,
+            workActive = workActive,
             flaggedCounts = flaggedCounts,
             onStartScan = onStartScan,
             onCancelScan = onCancelScan,
@@ -144,12 +147,13 @@ private fun ScanCard(
     access: LibraryAccess,
     audioScanningEnabled: Boolean,
     scan: ScanProgress,
+    workActive: Boolean,
     flaggedCounts: CategoryCounts,
     onStartScan: () -> Unit,
     onCancelScan: () -> Unit,
 ) {
     val canScan = access.images.canRead || access.videos.canRead || (access.audio.canRead && audioScanningEnabled)
-    val running = scan.phase == ScanPhase.Running
+    val running = scanAppearsRunning(scan.phase, workActive)
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp)) {
             Text(
@@ -158,7 +162,10 @@ private fun ScanCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(8.dp))
-            Text(text = stringResource(scanMessage(scan.phase)), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = stringResource(scanMessage(if (running) ScanPhase.Running else scan.phase)),
+                style = MaterialTheme.typography.bodyLarge,
+            )
             if (running) {
                 Spacer(Modifier.height(12.dp))
                 if (scan.total > 0) {

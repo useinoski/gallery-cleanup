@@ -23,6 +23,19 @@ import kotlinx.coroutines.withContext
  *
  * Keys with no present `media_item` row are skipped. Removed rows are
  * already absent from the key list. [resolvePresent] is what drops both.
+ *
+ * This is not its own WorkManager job. It runs inside the same unique scan
+ * that just finished the walk, on that worker's coroutine. Cancel stops it
+ * with the walk. The stored phase is put back to [ScanPhase.Running] for
+ * the duration, because the walk has already saved [ScanPhase.Completed]
+ * and the screen would otherwise hide Cancel while this pass is still
+ * classifying. [ensureActive] runs at least once per batch, so a cancel
+ * finishes the batch in hand and does not start the next one. The run is
+ * then saved as [ScanPhase.Cancelled].
+ *
+ * Nothing here starts itself. Rows the upgrade marked failed are classified
+ * only when a scan the user started (or WorkManager resumed) reaches this
+ * pass.
  */
 internal class PendingRescan(
     private val records: AnalysisRecords,
@@ -50,9 +63,18 @@ internal class PendingRescan(
                 present[key]?.let { item -> items += item }
             }
             if (items.isEmpty()) return
+            coroutineContext.ensureActive()
+            val open = runs.readRun()
+            runs.saveRun(open.copy(phase = ScanPhase.Running, detail = null))
             for (batch in items.chunked(batchSize)) {
+                // Once per batch, before the batch starts. The batch in hand
+                // may finish; the next one must not start after Cancel.
                 coroutineContext.ensureActive()
                 observer.onBatch(batch)
+            }
+            val done = runs.readRun()
+            if (done.phase == ScanPhase.Running) {
+                runs.saveRun(done.copy(phase = ScanPhase.Completed, detail = null))
             }
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) {
