@@ -1,5 +1,6 @@
 package com.useinoski.gallerycleanup.review
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -27,6 +28,9 @@ fun ReviewRoute(
     category: ScanCategory,
     onBack: () -> Unit,
 ) {
+    // The review screen is not its own activity. The system back gesture and
+    // the on-screen Back button both call [onBack], which is what returns to home.
+    BackHandler(onBack = onBack)
     val appContext = LocalContext.current.applicationContext
     val reviewCategory = remember(category) { category.toReviewCategory() }
     // observePending is cold. remember keeps one flow for this category so

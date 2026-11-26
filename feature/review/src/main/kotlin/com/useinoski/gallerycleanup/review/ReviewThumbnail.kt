@@ -191,9 +191,16 @@ internal fun ReviewThumbnail(
     modifier: Modifier = Modifier,
 ) {
     var bitmap by remember(item.contentUri) { mutableStateOf<Bitmap?>(null) }
+    // Null while the load is in flight. A failed load stays null, and that is
+    // when a non-sensitive cell shows the broken-image icon. Sensitive cells
+    // never use that icon: they stay on the hidden placeholder.
+    var loadFinished by remember(item.contentUri) { mutableStateOf(false) }
     val sizePx = 256
     LaunchedEffect(item.contentUri) {
+        loadFinished = false
+        bitmap = null
         bitmap = loader.load(item.contentUri, sizePx)
+        loadFinished = true
     }
     val privacy = thumbnailPrivacy(
         sensitive = item.sensitive,
@@ -201,12 +208,11 @@ internal fun ReviewThumbnail(
         hasBitmap = bitmap != null,
         sdkInt = sdkInt,
     )
-    val description = when (privacy) {
-        ThumbnailPrivacy.Clear -> stringResource(R.string.review_photo)
-        ThumbnailPrivacy.Blurred,
-        ThumbnailPrivacy.Obscured,
-        ThumbnailPrivacy.Hidden,
-        -> stringResource(R.string.review_hidden_photo)
+    val unavailable = privacy == ThumbnailPrivacy.Clear && loadFinished && bitmap == null
+    val description = when {
+        unavailable -> stringResource(R.string.review_photo_unavailable)
+        privacy == ThumbnailPrivacy.Clear -> stringResource(R.string.review_photo)
+        else -> stringResource(R.string.review_hidden_photo)
     }
     val click = if (item.sensitive) {
         Modifier.clickable(
@@ -225,15 +231,29 @@ internal fun ReviewThumbnail(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .testTag(item.testTag)
             .semantics {
-                contentDescription = description
                 thumbnailPrivacy = privacy
+                // The broken-image icon carries its own description. Setting it
+                // here as well would announce the cell twice.
+                if (!unavailable) {
+                    contentDescription = description
+                }
             }
             .then(click),
         contentAlignment = Alignment.Center,
     ) {
         when (privacy) {
-            ThumbnailPrivacy.Clear -> bitmap?.let { sharp ->
-                ThumbnailImage(sharp, Modifier.fillMaxSize())
+            ThumbnailPrivacy.Clear -> {
+                val sharp = bitmap
+                if (sharp != null) {
+                    ThumbnailImage(sharp, Modifier.fillMaxSize())
+                } else if (loadFinished) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_review_broken),
+                        contentDescription = stringResource(R.string.review_photo_unavailable),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(32.dp),
+                    )
+                }
             }
             ThumbnailPrivacy.Blurred -> bitmap?.let { sharp ->
                 ThumbnailImage(sharp, Modifier.fillMaxSize().privacyBlur())

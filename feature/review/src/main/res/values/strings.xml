@@ -5,6 +5,7 @@
     <string name="review_empty">Nothing waiting in this category.</string>
     <string name="review_loading">Loading…</string>
     <string name="review_photo">Photo</string>
+    <string name="review_photo_unavailable">Image unavailable</string>
     <string name="review_hidden_photo">Hidden photo</string>
     <string name="review_show">Show this photo</string>
     <string name="review_hide">Hide this photo</string>

@@ -2,12 +2,15 @@ package com.useinoski.gallerycleanup.review
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -75,6 +78,29 @@ class ReviewScreenTest {
     }
 
     @Test
+    fun aPlainItemWithNoThumbnailShowsTheBrokenImageIcon() {
+        show(
+            category = ScanCategory.Screenshot,
+            items = listOf(
+                item(id = 3, uri = "content://plain-missing", sensitive = false),
+                item(id = 4, uri = "content://sensitive-missing", sensitive = true),
+                item(id = 5, uri = "content://plain-ok", sensitive = false),
+            ),
+            sdkInt = 34,
+            loader = ThumbnailLoader { uri, _ ->
+                if (uri.endsWith("ok")) bitmap else null
+            },
+        )
+        compose.onNodeWithTag("review-item-Image-3").assert(privacy(ThumbnailPrivacy.Clear))
+        compose.onNodeWithContentDescription("Image unavailable").assertIsDisplayed()
+        compose.onAllNodesWithContentDescription("Image unavailable").assertCountEquals(1)
+        compose.onNodeWithTag("review-item-Image-4").assert(privacy(ThumbnailPrivacy.Hidden))
+        compose.onNodeWithContentDescription("Hidden photo").assertIsDisplayed()
+        compose.onAllNodesWithContentDescription("Hidden photo").assertCountEquals(1)
+        compose.onNodeWithTag("review-item-Image-5").assert(privacy(ThumbnailPrivacy.Clear))
+    }
+
+    @Test
     fun aSensitiveItemWithNoThumbnailStaysAPlaceholder() {
         show(
             category = ScanCategory.Sensitive,
@@ -111,6 +137,22 @@ class ReviewScreenTest {
         compose.waitForIdle()
         shown.value = true
         compose.onNodeWithTag("review-item-Image-7").assert(privacy(ThumbnailPrivacy.Blurred))
+    }
+
+    @Test
+    fun systemBackCallsOnBack() {
+        var backed = false
+        lateinit var dispatcher: OnBackPressedDispatcher
+        compose.setContent {
+            dispatcher = checkNotNull(LocalOnBackPressedDispatcherOwner.current).onBackPressedDispatcher
+            ReviewRoute(
+                category = ScanCategory.Screenshot,
+                onBack = { backed = true },
+            )
+        }
+        compose.waitForIdle()
+        dispatcher.onBackPressed()
+        assertTrue(backed)
     }
 
     @Test
