@@ -21,6 +21,7 @@ import com.useinoski.gallerycleanup.ui.home.HomeScreen
 import com.useinoski.gallerycleanup.ui.onboarding.OnboardingScreen
 import com.useinoski.gallerycleanup.ui.permission.PermissionGate
 import com.useinoski.gallerycleanup.ui.theme.GalleryTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -344,6 +345,51 @@ class GalleryScreenTest {
         compose.onNodeWithText("Suggestive: 0").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Screenshots: 0").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("Unflagged").assertCountEquals(0)
+        compose.onNodeWithText("Review Nudity").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Review People").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Review Videos").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("Review Suggestive").assertCountEquals(0)
+    }
+
+    @Test
+    fun aReviewButtonOpensThatCategory() {
+        val opened = mutableListOf<ScanCategory>()
+        val flagged = CategoryCounts(
+            pending = ScanCategory.entries.associateWith { category ->
+                if (category == ScanCategory.Sensitive) 2 else 0
+            },
+        )
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Full,
+                        videos = PermissionState.Full,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = 20, videos = 4, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress(phase = ScanPhase.Completed, byType = emptyList(), detail = null),
+                    onStartScan = {},
+                    onCancelScan = {},
+                    flaggedCounts = flagged,
+                    onOpenReview = { category -> opened += category },
+                )
+            }
+        }
+        compose.onNodeWithText("Review Nudity").performScrollTo().performClick()
+        assertEquals(listOf(ScanCategory.Sensitive), opened)
+        compose.onAllNodesWithText("Review Suggestive").assertCountEquals(0)
     }
 
     @Test
