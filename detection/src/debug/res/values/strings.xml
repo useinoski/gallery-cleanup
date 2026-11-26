@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nsfw_labeler_title">NSFW labeler (debug)</string>
+    <string name="nsfw_labeler_heading">Label photos on this phone</string>
+    <string name="nsfw_labeler_privacy">Labels stay in app-private storage and are deleted on uninstall. Copy summary copies totals only. Nothing is uploaded.</string>
+    <string name="nsfw_labeler_loading">Loading photos…</string>
+    <string name="nsfw_labeler_need_access">This screen only reads photos Gallery Cleanup is already allowed to see. Open Gallery Cleanup and allow photos, then come back. It does not ask for a new permission.</string>
+    <string name="nsfw_labeler_empty">No photos are visible. Allow photos in Gallery Cleanup, then come back.</string>
+    <string name="nsfw_labeler_list_failed">The photo list could not be read. Nothing was uploaded.</string>
+    <string name="nsfw_labeler_progress">Labeled %1$d of %2$d</string>
+    <string name="nsfw_labeler_position">Photo %1$d of %2$d</string>
+    <string name="nsfw_labeler_current">Current label: %1$s</string>
+    <string name="nsfw_labeler_none">Current label: none yet</string>
+    <string name="nsfw_labeler_breakdown">Explicit %1$d. Not explicit %2$d. Unsure %3$d. Immodest %4$d.</string>
+    <string name="nsfw_labeler_blur_hint">The photo is blurred. Tap it to see it clearly. It blurs again when you move on.</string>
+    <string name="nsfw_labeler_unreadable">This photo could not be read. You can still label it or skip it. Nothing was uploaded.</string>
+    <string name="nsfw_labeler_explicit">Explicit</string>
+    <string name="nsfw_labeler_not_explicit">Not explicit</string>
+    <string name="nsfw_labeler_unsure">Unsure</string>
+    <string name="nsfw_labeler_immodest">Immodest (not explicit)</string>
+    <string name="nsfw_labeler_previous">Previous</string>
+    <string name="nsfw_labeler_next">Next</string>
+    <string name="nsfw_labeler_run">Run evaluation</string>
+    <string name="nsfw_labeler_running">Scoring %1$d of %2$d on this phone.</string>
+    <string name="nsfw_labeler_running_placeholder">Scoring on this phone. The table will replace this line.</string>
+    <string name="nsfw_labeler_copy">Copy summary</string>
+    <string name="nsfw_labeler_copied">Copied aggregate numbers only.</string>
+    <string name="nsfw_labeler_clip_label">NSFW aggregates</string>
+    <string name="nsfw_labeler_failed">Evaluation stopped. Nothing was uploaded.</string>
+    <string name="nsfw_labeler_access_lost">Photo access was removed. Allow photos in Gallery Cleanup, then open this screen again.</string>
+    <string name="nsfw_labeler_need_labels">Label at least one photo before running evaluation.</string>
+    <string name="nsfw_labeler_finished">Evaluation finished. The table is aggregates only.</string>
+    <string name="nsfw_labeler_all_labeled">Every visible photo has a label. You can change one, or run evaluation.</string>
+    <string name="nsfw_labeler_photo_description">Current photo. Blurred until tapped.</string>
+    <string name="nsfw_labeler_summary_empty">Run evaluation to fill the table.</string>
+</resources>

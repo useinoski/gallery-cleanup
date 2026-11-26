@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="nsfw_labeler_status" type="id" />
+    <item name="nsfw_labeler_breakdown" type="id" />
+    <item name="nsfw_labeler_progress" type="id" />
+    <item name="nsfw_labeler_position" type="id" />
+    <item name="nsfw_labeler_current" type="id" />
+    <item name="nsfw_labeler_done" type="id" />
+    <item name="nsfw_labeler_photo" type="id" />
+    <item name="nsfw_labeler_hint" type="id" />
+    <item name="nsfw_labeler_explicit" type="id" />
+    <item name="nsfw_labeler_not_explicit" type="id" />
+    <item name="nsfw_labeler_unsure" type="id" />
+    <item name="nsfw_labeler_immodest" type="id" />
+    <item name="nsfw_labeler_previous" type="id" />
+    <item name="nsfw_labeler_next" type="id" />
+    <item name="nsfw_labeler_run" type="id" />
+    <item name="nsfw_labeler_summary" type="id" />
+    <item name="nsfw_labeler_copy" type="id" />
+</resources>
