@@ -15,7 +15,13 @@ import kotlinx.coroutines.withContext
 /** Rows asked from MediaStore per round trip. Tests pass a smaller number. */
 const val SCAN_BATCH_SIZE = 40
 
-internal const val SCAN_ACCESS_REVOKED_DETAIL = "Access changed while the scan was running."
+/**
+ * Stored on [com.useinoski.gallerycleanup.model.ScanRun.detail] when the phase
+ * is [com.useinoski.gallerycleanup.model.ScanPhase.AccessRevoked]. The home
+ * screen shows the same sentence from its string resource.
+ */
+const val SCAN_ACCESS_REVOKED_DETAIL =
+    "Media access was removed — grant access to continue scanning."
 internal const val SCAN_FAILED_DETAIL = "The scan failed before it finished."
 
 /**

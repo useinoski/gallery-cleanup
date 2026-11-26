@@ -50,6 +50,18 @@ interface ScanStoreDao {
     )
     suspend fun findMedia(type: MediaType, id: Long): MediaItemEntity?
 
+    /**
+     * Present rows for these ids. Removed rows are left out. An id that is
+     * not stored is left out. Callers chunk [ids] under SQLite's variable limit.
+     */
+    @Query(
+        """
+        SELECT * FROM media_item
+        WHERE type = :type AND removed = 0 AND media_id IN (:ids)
+        """,
+    )
+    suspend fun presentMedia(type: MediaType, ids: List<Long>): List<MediaItemEntity>
+
     @Query("SELECT * FROM scan_checkpoint WHERE singleton = 1")
     suspend fun readCheckpoint(): ScanCheckpointEntity?
 

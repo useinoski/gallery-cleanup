@@ -262,4 +262,76 @@ class GalleryScreenTest {
         compose.onNodeWithText("Screenshots: 0").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("Unflagged").assertCountEquals(0)
     }
+
+    @Test
+    fun accessRevokedTellsTheUserToGrantAccessAgain() {
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Denied,
+                        videos = PermissionState.Denied,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = null, videos = null, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress(
+                        phase = ScanPhase.AccessRevoked,
+                        byType = emptyList(),
+                        detail = "Media access was removed — grant access to continue scanning.",
+                    ),
+                    onStartScan = {},
+                    onCancelScan = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Media access was removed — grant access to continue scanning.")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun selectedPhotosDoesNotShowTheRevokedMessage() {
+        compose.setContent {
+            GalleryTheme {
+                HomeScreen(
+                    access = LibraryAccess(
+                        images = PermissionState.Partial,
+                        videos = PermissionState.Partial,
+                        audio = PermissionState.Denied,
+                    ),
+                    counts = MediaCounts(images = 3, videos = 1, music = null, otherAudio = null),
+                    audioScanningEnabled = false,
+                    loading = false,
+                    failed = false,
+                    sdkInt = 34,
+                    onSelectMore = {},
+                    onAllowAll = {},
+                    onAllowImages = {},
+                    onAllowVideos = {},
+                    onTurnOnAudio = {},
+                    onOpenSettings = {},
+                    onRetry = {},
+                    scan = ScanProgress(phase = ScanPhase.Completed, byType = emptyList(), detail = null),
+                    onStartScan = {},
+                    onCancelScan = {},
+                )
+            }
+        }
+        compose.onNodeWithText("Scan finished. Nothing was deleted.").performScrollTo().assertIsDisplayed()
+        compose.onAllNodesWithText("Media access was removed — grant access to continue scanning.")
+            .assertCountEquals(0)
+        compose.onNodeWithText("Only the photos and videos you selected are visible. These counts leave out the rest of the library.")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
 }

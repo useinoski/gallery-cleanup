@@ -56,7 +56,7 @@
     <string name="scan_running">Scanning the library on this phone. Nothing is uploaded.</string>
     <string name="scan_done">Scan finished. Nothing was deleted.</string>
     <string name="scan_cancelled">Scan cancelled. Start again to continue from the last saved batch.</string>
-    <string name="scan_revoked">Access changed, so the scan stopped. Allow photos and videos again to continue.</string>
+    <string name="scan_revoked">Media access was removed — grant access to continue scanning.</string>
     <string name="scan_failed">The scan stopped before it finished. Start again to continue from the last saved batch.</string>
     <string name="scan_need_access">Allow photos or videos before scanning.</string>
 

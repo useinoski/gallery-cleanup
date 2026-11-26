@@ -40,3 +40,13 @@ internal fun MediaItem.toEntity(): MediaItemEntity = MediaItemEntity(
     mimeType = mimeType,
     removed = false,
 )
+
+internal fun MediaItemEntity.toItem(): MediaItem = MediaItem(
+    id = mediaId,
+    uri = uri,
+    type = type,
+    dateAdded = dateAdded,
+    size = size,
+    path = path,
+    mimeType = mimeType,
+)
