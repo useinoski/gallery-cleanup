@@ -20,9 +20,10 @@ internal data class ReviewCategory(
  *
  * [ScanCategory.Sensitive] is the nudity / NSFW bucket. Its KDoc is what
  * marks those thumbnails to start blurred. [ScanCategory.Immodest] is
- * suggestive and stays sharp. A later MediaCategory (after the type lands)
- * should replace this function and the parameter of [ReviewRoute]. The grid
- * does not switch on the enum itself.
+ * suggestive and stays sharp. [com.useinoski.gallerycleanup.model.MediaCategory]
+ * exists, and a later change should replace this function and the parameter
+ * of [ReviewRoute]. This screen still takes [ScanCategory]. The grid does
+ * not switch on the enum itself.
  */
 internal fun ScanCategory.toReviewCategory(): ReviewCategory = when (this) {
     ScanCategory.Sensitive -> ReviewCategory(

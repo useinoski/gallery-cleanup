@@ -1,9 +1,11 @@
 package com.useinoski.gallerycleanup.review
 
+import androidx.lifecycle.SavedStateHandle
 import com.useinoski.gallerycleanup.data.AnalysisOutcome
 import com.useinoski.gallerycleanup.data.ReviewStatus
 import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.data.ScanResult
+import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -18,6 +20,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -102,14 +105,166 @@ class ReviewViewModelTest {
         assertEquals("content://media/external/images/media/8", item.contentUri)
     }
 
+    @Test
+    fun longPressSelectsAndTapToggles() = runTest {
+        val upstream = MutableStateFlow(
+            listOf(
+                row(id = 1, category = ScanCategory.Screenshot),
+                row(id = 2, category = ScanCategory.Screenshot),
+            ),
+        )
+        val viewModel = viewModel(ScanCategory.Screenshot, upstream)
+        val first = item(viewModel, 1)
+        val second = item(viewModel, 2)
+        assertFalse(viewModel.consumeBack())
+
+        viewModel.startSelection(first)
+        viewModel.startSelection(first)
+        assertEquals(setOf("Image:1"), viewModel.selection.value)
+
+        viewModel.toggleSelection(second)
+        assertEquals(setOf("Image:1", "Image:2"), viewModel.selection.value)
+        viewModel.toggleSelection(first)
+        assertEquals(setOf("Image:2"), viewModel.selection.value)
+        viewModel.toggleSelection(second)
+        assertTrue(viewModel.selection.value.isEmpty())
+    }
+
+    @Test
+    fun selectAllTakesTheCurrentCategoryAndClearEmptiesIt() = runTest {
+        val upstream = MutableStateFlow(
+            listOf(
+                row(id = 1, category = ScanCategory.People),
+                row(id = 2, category = ScanCategory.People, type = MediaType.Video),
+                row(id = 2, category = ScanCategory.People),
+                row(id = 3, category = ScanCategory.People, status = ReviewStatus.Kept),
+                row(id = 4, category = ScanCategory.Screenshot),
+            ),
+        )
+        val viewModel = viewModel(ScanCategory.People, upstream)
+        viewModel.selectAll()
+        assertEquals(setOf("Image:1", "Video:2", "Image:2"), viewModel.selection.value)
+
+        viewModel.clearSelection()
+        assertTrue(viewModel.selection.value.isEmpty())
+        assertFalse(viewModel.consumeBack())
+    }
+
+    @Test
+    fun backClearsSelectionBeforeItLeaves() = runTest {
+        val upstream = MutableStateFlow(listOf(row(id = 1, category = ScanCategory.Screenshot)))
+        val viewModel = viewModel(ScanCategory.Screenshot, upstream)
+        viewModel.startSelection(item(viewModel, 1))
+        assertTrue(viewModel.consumeBack())
+        assertTrue(viewModel.selection.value.isEmpty())
+        assertFalse(viewModel.consumeBack())
+    }
+
+    @Test
+    fun selectionSurvivesANewViewModelWithTheSameSavedState() = runTest {
+        val handle = SavedStateHandle()
+        val upstream = MutableStateFlow(
+            listOf(
+                row(id = 1, category = ScanCategory.Screenshot),
+                row(id = 2, category = ScanCategory.Screenshot),
+            ),
+        )
+        val first = viewModel(ScanCategory.Screenshot, upstream, savedState = handle)
+        first.startSelection(item(first, 1))
+        first.toggleSelection(item(first, 2))
+
+        val second = viewModel(ScanCategory.Screenshot, upstream, savedState = handle)
+        assertEquals(setOf("Image:1", "Image:2"), second.selection.value)
+        assertEquals(setOf("Image:1", "Image:2"), visibleSelection(second.uiState.value, second.selection.value))
+
+        second.clearSelection()
+        val third = viewModel(ScanCategory.Screenshot, upstream, savedState = handle)
+        assertTrue(third.selection.value.isEmpty())
+    }
+
+    @Test
+    fun keepWritesKeptDropsTheRowsAndUndoRestoresThem() = runTest {
+        val upstream = MutableStateFlow(
+            listOf(
+                row(id = 1, category = ScanCategory.Screenshot),
+                row(id = 2, category = ScanCategory.Screenshot),
+                row(id = 3, category = ScanCategory.Screenshot),
+            ),
+        )
+        val decisions = RecordingDecisions(upstream)
+        val viewModel = viewModel(ScanCategory.Screenshot, upstream, decisions)
+        viewModel.startSelection(item(viewModel, 1))
+        viewModel.toggleSelection(item(viewModel, 3))
+        viewModel.keepSelected()
+
+        assertEquals(1, decisions.kept.size)
+        assertEquals(
+            listOf(MediaKey(MediaType.Image, 1), MediaKey(MediaType.Image, 3)),
+            decisions.kept.single(),
+        )
+        assertEquals(listOf(2L), ids(viewModel))
+        assertTrue(viewModel.selection.value.isEmpty())
+        assertEquals(2, viewModel.keepNotice.value!!.count)
+        assertEquals(ReviewStatus.Kept, upstream.value.first { it.mediaStoreId == 1L }.reviewStatus)
+        assertEquals(ReviewStatus.Pending, upstream.value.first { it.mediaStoreId == 2L }.reviewStatus)
+
+        viewModel.undoKeep()
+        assertEquals(
+            listOf(MediaKey(MediaType.Image, 1), MediaKey(MediaType.Image, 3)),
+            decisions.pending.single(),
+        )
+        assertNull(viewModel.keepNotice.value)
+        assertEquals(listOf(1L, 2L, 3L), ids(viewModel))
+        assertEquals(ReviewStatus.Pending, upstream.value.first { it.mediaStoreId == 1L }.reviewStatus)
+    }
+
+    @Test
+    fun keepWorksForASingleSelectedItem() = runTest {
+        val upstream = MutableStateFlow(
+            listOf(
+                row(id = 8, category = ScanCategory.Sensitive),
+                row(id = 9, category = ScanCategory.Sensitive),
+            ),
+        )
+        val decisions = RecordingDecisions(upstream)
+        val viewModel = viewModel(ScanCategory.Sensitive, upstream, decisions)
+        viewModel.startSelection(item(viewModel, 9))
+        viewModel.keepSelected()
+
+        assertEquals(listOf(MediaKey(MediaType.Image, 9)), decisions.kept.single())
+        assertEquals(listOf(8L), ids(viewModel))
+        assertEquals(1, viewModel.keepNotice.value!!.count)
+        viewModel.keepSelected()
+        assertEquals(1, decisions.kept.size)
+    }
+
+    @Test
+    fun keepWithNothingSelectedDoesNotWrite() = runTest {
+        val upstream = MutableStateFlow(listOf(row(id = 1, category = ScanCategory.Screenshot)))
+        val decisions = RecordingDecisions(upstream)
+        val viewModel = viewModel(ScanCategory.Screenshot, upstream, decisions)
+        viewModel.keepSelected()
+        assertTrue(decisions.kept.isEmpty())
+        assertNull(viewModel.keepNotice.value)
+        assertEquals(listOf(1L), ids(viewModel))
+    }
+
     private fun viewModel(
         category: ScanCategory,
         pending: Flow<List<ScanResult>>,
+        decisions: ReviewDecisions = NoDecisions,
+        savedState: SavedStateHandle = SavedStateHandle(),
     ): ReviewViewModel = ReviewViewModel(
         category = category,
         pending = pending,
+        decisions = decisions,
+        savedState = savedState,
         started = SharingStarted.Eagerly,
     )
+
+    private fun item(viewModel: ReviewViewModel, id: Long): ReviewItem {
+        return items(viewModel).first { item -> item.id == id }
+    }
 
     private fun items(viewModel: ReviewViewModel): List<ReviewItem> {
         return (viewModel.uiState.value as ReviewUiState.Items).items
@@ -127,6 +282,40 @@ class ReviewCategoryTest {
             .forEach { category ->
                 assertFalse(category.name, category.toReviewCategory().sensitive)
             }
+    }
+}
+
+private object NoDecisions : ReviewDecisions {
+    override suspend fun markKept(keys: Collection<MediaKey>) = Unit
+    override suspend fun markPending(keys: Collection<MediaKey>) = Unit
+}
+
+/**
+ * Applies keep and undo to the same list the ViewModel is watching, which is
+ * what [com.useinoski.gallerycleanup.data.RoomScanResultStore.observePending]
+ * does after the transaction: a kept row is no longer in the pending list.
+ */
+private class RecordingDecisions(
+    private val rows: MutableStateFlow<List<ScanResult>>,
+) : ReviewDecisions {
+    val kept = mutableListOf<List<MediaKey>>()
+    val pending = mutableListOf<List<MediaKey>>()
+
+    override suspend fun markKept(keys: Collection<MediaKey>) {
+        kept += keys.toList()
+        setStatus(keys, ReviewStatus.Kept)
+    }
+
+    override suspend fun markPending(keys: Collection<MediaKey>) {
+        pending += keys.toList()
+        setStatus(keys, ReviewStatus.Pending)
+    }
+
+    private fun setStatus(keys: Collection<MediaKey>, status: ReviewStatus) {
+        val selected = keys.toSet()
+        rows.value = rows.value.map { row ->
+            if (row.key in selected) row.copy(reviewStatus = status) else row
+        }
     }
 }
 
