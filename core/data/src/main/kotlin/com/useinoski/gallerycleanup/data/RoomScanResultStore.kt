@@ -9,6 +9,7 @@ import com.useinoski.gallerycleanup.model.ScanProgress
 import com.useinoski.gallerycleanup.model.ScanRun
 import com.useinoski.gallerycleanup.model.ScanStore
 import com.useinoski.gallerycleanup.model.TypeProgress
+import kotlin.jvm.JvmOverloads
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -24,11 +25,14 @@ import kotlinx.coroutines.flow.map
  * writes.
  *
  * The review API is not part of [ScanStore]. It uses `scan_results`:
- * [upsert], [markKept], [markTrashed], [markPending], [remove],
- * [resetReviewed], [keptKeys], [observePending], and [observePendingCounts].
- * [upsert] stores [ReviewStatus.Pending] and never overwrites a kept row.
- * [remove] deletes a review row after the system trash dialog succeeds. It
- * is not [markRemoved].
+ * [upsert], [recordFailure], [markKept], [markTrashed], [markPending],
+ * [remove], [resetReviewed], [keptKeys], [keysNeedingRescan],
+ * [observePending], and [observePendingCounts]. [upsert] stores
+ * [ReviewStatus.Pending] and [AnalysisOutcome.Scored] for a new or pending
+ * row, and it keeps an existing kept or trashed decision. [recordFailure]
+ * stores [AnalysisOutcome.Failed] for one key and leaves a kept row alone.
+ * [remove] deletes a review row after the
+ * system trash dialog succeeds. It is not [markRemoved].
  *
  * Writes are chunked. SQLite rejects a statement with too many `?`
  * placeholders (999 on older builds). A trash batch can be up to 2000 URIs.
@@ -45,16 +49,17 @@ class RoomScanResultStore internal constructor(
     /**
      * Inserts or replaces each result, matched on [MediaKey].
      *
-     * The last copy of a key in [results] wins. A row already marked
-     * [ReviewStatus.Kept] is not written: category, score, model version,
-     * timestamp, URI, and status all stay. Call [keptKeys] before a detector
-     * run so those files are skipped. This method is the backstop when a
-     * batch still contains one.
+     * The last copy of a key in [results] wins. Call [keptKeys] before a
+     * detector run so files the user kept are not opened again. This method
+     * is the backstop when a batch still contains one.
      *
-     * Every other row is stored as [ReviewStatus.Pending], including a row
-     * that was [ReviewStatus.Trashed]. The [ScanResult.reviewStatus] on the
-     * argument is ignored. A file that shows up in a later scan is visible
-     * again, so the old trash mark would be a lie.
+     * A row that is already [ReviewStatus.Kept] or [ReviewStatus.Trashed]
+     * keeps that decision. Category, score, model version, time, URI, and
+     * outcome are still written from the new result, and the failure count
+     * goes back to 0. The status on the argument is ignored: a new row, or a
+     * row that was [ReviewStatus.Pending], is stored as [ReviewStatus.Pending]
+     * and [AnalysisOutcome.Scored]. A scored write is how a previous failure
+     * leaves the rescan set.
      */
     suspend fun upsert(results: List<ScanResult>) {
         if (results.isEmpty()) return
@@ -62,35 +67,133 @@ class RoomScanResultStore internal constructor(
         for (result in results) {
             latestByKey[result.key] = result
         }
-        database.withTransaction {
-            val kept = keptKeySet()
-            val rows = ArrayList<ScanResultEntity>(latestByKey.size)
-            for ((key, result) in latestByKey) {
-                if (key !in kept) rows += result.toEntity()
-            }
-            rows.chunked(UPSERT_CHUNK).forEach { chunk -> this.results.upsertAll(chunk) }
+        writeReviewRows(latestByKey.values.map { result -> result.toEntity() }, WriteMode.Score)
+    }
+
+    /**
+     * Records that analysis of [key] failed.
+     *
+     * The row is [AnalysisOutcome.Failed], [ReviewStatus.Pending], category
+     * [ScanCategory.Unflagged], confidence 0, and model version
+     * [MODEL_VERSION_NONE]. Those category and version values are
+     * placeholders. [observePending] and [observePendingCounts] skip the row,
+     * so it is not a clean photo. [keysNeedingRescan] returns it until a
+     * later [upsert] stores a scored row.
+     *
+     * A row already marked [ReviewStatus.Kept] is left unchanged.
+     * [ReviewStatus.Trashed] stays trashed: the failure fields are written
+     * and the failure count goes up by one, and the row does not become
+     * pending. [contentUri] is `MediaItem.uri`. It has to be unique in the
+     * table.
+     *
+     * [scannedAtEpochMillis] defaults to the current wall clock. A Kotlin
+     * caller can omit it. A Java caller has the two-argument overload from
+     * [JvmOverloads] and the three-argument form when the clock is injected.
+     */
+    @JvmOverloads
+    suspend fun recordFailure(
+        key: MediaKey,
+        contentUri: String,
+        scannedAtEpochMillis: Long = System.currentTimeMillis(),
+    ) {
+        recordFailures(
+            listOf(
+                AnalysisFailure(
+                    key = key,
+                    contentUri = contentUri,
+                    scannedAtEpochMillis = scannedAtEpochMillis,
+                ),
+            ),
+        )
+    }
+
+    /**
+     * Records each failed analysis. The last copy of a key in [failures]
+     * wins. An empty list does nothing. Kept rows are not written. Each
+     * written row's failure count goes up by one.
+     */
+    suspend fun recordFailures(failures: List<AnalysisFailure>) {
+        if (failures.isEmpty()) return
+        val latestByKey = LinkedHashMap<MediaKey, AnalysisFailure>(failures.size)
+        for (failure in failures) {
+            latestByKey[failure.key] = failure
         }
+        writeReviewRows(latestByKey.values.map { failure -> failure.toEntity() }, WriteMode.Failure)
+    }
+
+    /**
+     * Keys the scanner should classify again.
+     *
+     * A row is included when analysis [AnalysisOutcome.Failed], or when its
+     * stored `model_version` is not in [currentModelVersions]. Pass every
+     * version string the current pipeline still writes. That includes each
+     * detector identity (`detectorId|modelVersion`, the same text [upsert]
+     * stores) and each rule name. Detector id is not its own column. A row
+     * from another detector has a different string, so passing only one
+     * detector's version also returns the other detectors' rows.
+     *
+     * [ReviewStatus.Kept] and [ReviewStatus.Trashed] rows are excluded. A
+     * model update must not open a file the user already decided on, because
+     * a later [upsert] would refresh the score and must not clear that
+     * decision. Rows whose `media_item` is marked removed are excluded. A
+     * review row with no `media_item` row is included. The caller should
+     * open only keys it still has bytes for.
+     *
+     * [currentModelVersions] must be non-empty, and each entry must be
+     * non-blank. Include [MODEL_VERSION_NONE] when a clean photo scored by
+     * the current pipeline should stay put. Leave it out when a model change
+     * should score those clean rows again.
+     */
+    suspend fun keysNeedingRescan(currentModelVersions: Collection<String>): List<MediaKey> {
+        require(currentModelVersions.isNotEmpty()) {
+            "Pass at least one current model version."
+        }
+        require(currentModelVersions.all { version -> version.isNotBlank() }) {
+            "Model version is required."
+        }
+        val versions = currentModelVersions.distinct()
+        return results.keysNeedingRescan(
+            currentModelVersions = versions,
+            kept = ReviewStatus.Kept,
+            trashed = ReviewStatus.Trashed,
+            failedOutcome = AnalysisOutcome.Failed,
+        ).map { row -> MediaKey(type = row.mediaType, id = row.mediaStoreId) }
+    }
+
+    /** One current version. Same rules as [keysNeedingRescan]. */
+    suspend fun keysNeedingRescan(currentModelVersion: String): List<MediaKey> {
+        require(currentModelVersion.isNotBlank()) { "Model version is required." }
+        return keysNeedingRescan(listOf(currentModelVersion))
     }
 
     /**
      * Items in [category] that are still [ReviewStatus.Pending], newest scan
-     * first. Kept and trashed rows are absent. [ScanCategory.Unflagged] is a
-     * valid argument; those rows were scanned and nothing was suggested.
+     * first. Kept, trashed, failed, and removed rows are absent.
+     * [ScanCategory.Unflagged] is a valid argument; those rows were scored
+     * and nothing was suggested.
      *
-     * The flow emits the current list, then emits again when the table changes.
-     * Nothing is queried until a collector starts.
+     * The flow emits the current list, then emits again when `scan_results`
+     * or `media_item` changes. Nothing is queried until a collector starts.
      */
     fun observePending(category: ScanCategory): Flow<List<ScanResult>> {
-        return results.observeByCategoryAndStatus(category, ReviewStatus.Pending)
-            .map { rows -> rows.map(ScanResultEntity::toResult) }
+        return results.observeByCategoryAndStatus(
+            category = category,
+            status = ReviewStatus.Pending,
+            failedOutcome = AnalysisOutcome.Failed,
+        ).map { rows -> rows.map(ScanResultEntity::toResult) }
     }
 
     /**
-     * Pending counts for every category, including zeros. Kept and trashed
-     * rows are not counted. Emits again when the table changes.
+     * Pending counts for every category, including zeros. Kept, trashed,
+     * failed, and removed rows are not counted. A removed row is counted
+     * again after [upsertBatch] marks that media item present. Emits again
+     * when `scan_results` or `media_item` changes.
      */
     fun observePendingCounts(): Flow<CategoryCounts> {
-        return results.observeCounts(ReviewStatus.Pending).map { rows ->
+        return results.observeCounts(
+            status = ReviewStatus.Pending,
+            failedOutcome = AnalysisOutcome.Failed,
+        ).map { rows ->
             val found = rows.associate { row -> row.category to row.count }
             CategoryCounts(
                 pending = ScanCategory.entries.associateWith { category -> found[category] ?: 0 },
@@ -219,6 +322,43 @@ class RoomScanResultStore internal constructor(
             .distinctUntilChanged()
     }
 
+    private suspend fun writeReviewRows(rows: List<ScanResultEntity>, mode: WriteMode) {
+        if (rows.isEmpty()) return
+        database.withTransaction {
+            val existing = existingDecisions(rows)
+            val writable = ArrayList<ScanResultEntity>(rows.size)
+            for (row in rows) {
+                val key = MediaKey(type = row.mediaType, id = row.mediaStoreId)
+                val prior = existing[key]
+                if (mode == WriteMode.Failure && prior?.reviewStatus == ReviewStatus.Kept) {
+                    continue
+                }
+                val status = when (val decision = prior?.reviewStatus) {
+                    ReviewStatus.Kept, ReviewStatus.Trashed -> decision
+                    else -> ReviewStatus.Pending
+                }
+                val failures = when (mode) {
+                    WriteMode.Score -> 0
+                    WriteMode.Failure -> (prior?.failureCount ?: 0) + 1
+                }
+                writable += row.copy(reviewStatus = status, failureCount = failures)
+            }
+            writable.chunked(UPSERT_CHUNK).forEach { chunk -> results.upsertAll(chunk) }
+        }
+    }
+
+    private suspend fun existingDecisions(rows: List<ScanResultEntity>): Map<MediaKey, StoredDecisionRow> {
+        val found = HashMap<MediaKey, StoredDecisionRow>()
+        rows.groupBy { row -> row.mediaType }.forEach { (type, grouped) ->
+            grouped.map { row -> row.mediaStoreId }.distinct().chunked(ID_CHUNK).forEach { ids ->
+                for (row in results.decisionsFor(type, ids)) {
+                    found[MediaKey(type = row.mediaType, id = row.mediaStoreId)] = row
+                }
+            }
+        }
+        return found
+    }
+
     private suspend fun keptKeySet(): Set<MediaKey> {
         return results.keysWithStatus(ReviewStatus.Kept)
             .map { row -> MediaKey(type = row.mediaType, id = row.mediaStoreId) }
@@ -237,12 +377,17 @@ class RoomScanResultStore internal constructor(
     }
 
     private companion object {
-        // 8 columns per review row. 100 stays under the old 999-placeholder limit.
-        const val UPSERT_CHUNK = 100
+        // 10 columns per review row. 90 stays under the old 999-placeholder limit.
+        const val UPSERT_CHUNK = 90
 
         // ids plus the type and status placeholders.
         const val ID_CHUNK = 500
     }
+}
+
+private enum class WriteMode {
+    Score,
+    Failure,
 }
 
 internal fun List<RunProgressRow>.toRun(): ScanRun {

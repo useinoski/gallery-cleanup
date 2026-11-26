@@ -329,12 +329,13 @@ class RoomScanStoreTest {
             context,
             GalleryDatabase::class.java,
             dbFile.absolutePath,
-        ).addMigrations(MIGRATION_1_2).allowMainThreadQueries().build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).allowMainThreadQueries().build()
         try {
             val migratedStore = RoomScanResultStore(migrated)
             assertEquals(setOf(MediaKey(MediaType.Image, 4)), migratedStore.keptKeys())
             val row = migrated.scanResultDao().find(4, MediaType.Image)
             assertEquals(ReviewStatus.Kept, row!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Scored, row.analysisOutcome)
             assertEquals(0.25f, row.confidence, 0.0001f)
             assertEquals(ScanRun.IDLE, migratedStore.readRun())
             assertNull(migratedStore.readCheckpoint())
@@ -345,6 +346,223 @@ class RoomScanStoreTest {
         } finally {
             migrated.close()
             dbFile.delete()
+        }
+    }
+
+    @Test
+    fun versionTwoRowsSurviveAndNoneModelUnflaggedRowsAreMarkedForRescan() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dbFile = context.getDatabasePath("scan-migration-v2.db")
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+        File(dbFile.path + "-wal").delete()
+        File(dbFile.path + "-shm").delete()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbFile.absolutePath)
+                .callback(object : SupportSQLiteOpenHelper.Callback(2) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `scan_results` (`media_store_id` INTEGER NOT NULL, " +
+                                "`media_type` TEXT NOT NULL, `content_uri` TEXT NOT NULL, `category` TEXT NOT NULL, " +
+                                "`confidence` REAL NOT NULL, `model_version` TEXT NOT NULL, " +
+                                "`scanned_at_epoch_millis` INTEGER NOT NULL, `review_status` TEXT NOT NULL, " +
+                                "PRIMARY KEY(`media_store_id`, `media_type`))",
+                        )
+                        db.execSQL(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS `index_scan_results_content_uri` " +
+                                "ON `scan_results` (`content_uri`)",
+                        )
+                        db.execSQL(
+                            "CREATE INDEX IF NOT EXISTS `index_scan_results_category_review_status` " +
+                                "ON `scan_results` (`category`, `review_status`)",
+                        )
+                        db.execSQL(
+                            "CREATE INDEX IF NOT EXISTS `index_scan_results_review_status` " +
+                                "ON `scan_results` (`review_status`)",
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `media_item` (`type` TEXT NOT NULL, " +
+                                "`media_id` INTEGER NOT NULL, `uri` TEXT NOT NULL, `date_added` INTEGER NOT NULL, " +
+                                "`size` INTEGER NOT NULL, `path` TEXT, `mime_type` TEXT, `removed` INTEGER NOT NULL, " +
+                                "PRIMARY KEY(`type`, `media_id`))",
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `scan_checkpoint` (`singleton` INTEGER NOT NULL, " +
+                                "`type` TEXT NOT NULL, `date_modified` INTEGER NOT NULL, `media_id` INTEGER NOT NULL, " +
+                                "`scanned` INTEGER NOT NULL, `generation_modified_after` INTEGER, " +
+                                "`generation_modified_at_most` INTEGER NOT NULL, `media_store_version` TEXT NOT NULL, " +
+                                "PRIMARY KEY(`singleton`))",
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `scan_run` (`singleton` INTEGER NOT NULL, " +
+                                "`phase` TEXT NOT NULL, `media_store_version` TEXT, " +
+                                "`completed_volume_generation` INTEGER, `detail` TEXT, PRIMARY KEY(`singleton`))",
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `scan_type_progress` (`type` TEXT NOT NULL, " +
+                                "`scanned` INTEGER NOT NULL, `total` INTEGER NOT NULL, `position` INTEGER NOT NULL, " +
+                                "PRIMARY KEY(`type`))",
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS room_master_table " +
+                                "(id INTEGER PRIMARY KEY,identity_hash TEXT)",
+                        )
+                        db.execSQL(
+                            "INSERT OR REPLACE INTO room_master_table (id,identity_hash) " +
+                                "VALUES(42, 'c9ba4207ab4c6e25b59590db0676e78d')",
+                        )
+                    }
+
+                    override fun onUpgrade(
+                        db: SupportSQLiteDatabase,
+                        oldVersion: Int,
+                        newVersion: Int,
+                    ) = Unit
+                })
+                .build(),
+        )
+        helper.writableDatabase.use { db ->
+            db.execSQL(
+                "INSERT INTO scan_results (media_store_id, media_type, content_uri, category, confidence, " +
+                    "model_version, scanned_at_epoch_millis, review_status) VALUES " +
+                    "(1, 'Image', 'content://media/external/images/media/1', 'Screenshot', 0.25, " +
+                    "'screenshot-rules-1', 1000, 'Kept'), " +
+                    "(2, 'Image', 'content://media/external/images/media/2', 'Sensitive', 0.91, " +
+                    "'nsfw-1', 2000, 'Pending'), " +
+                    "(3, 'Image', 'content://media/external/images/media/3', 'Unflagged', 0.0, " +
+                    "'none', 3000, 'Pending'), " +
+                    "(4, 'Image', 'content://media/external/images/media/4', 'Unflagged', 0.0, " +
+                    "'none', 4000, 'Kept'), " +
+                    "(5, 'Image', 'content://media/external/images/media/5', 'People', 2.0, " +
+                    "'mlkit-face-count|face-v1', 5000, 'Trashed'), " +
+                    "(6, 'Image', 'content://media/external/images/media/6', 'Unflagged', 0.0, " +
+                    "'old-rule', 6000, 'Pending'), " +
+                    "(7, 'Image', 'content://media/external/images/media/7', 'Unflagged', 0.0, " +
+                    "'none', 7000, 'Trashed')",
+            )
+            db.execSQL(
+                "INSERT INTO media_item (type, media_id, uri, date_added, size, path, mime_type, removed) " +
+                    "VALUES ('Image', 1, 'content://media/external/images/media/1', 10, 20, 'DCIM/1', NULL, 0)",
+            )
+            db.execSQL(
+                "INSERT INTO scan_run (singleton, phase, media_store_version, completed_volume_generation, detail) " +
+                    "VALUES (1, 'Completed', 'v1', 4, NULL)",
+            )
+        }
+        helper.close()
+
+        val migrated = Room.databaseBuilder(
+            context,
+            GalleryDatabase::class.java,
+            dbFile.absolutePath,
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).allowMainThreadQueries().build()
+        try {
+            assertEquals(3, migrated.openHelper.readableDatabase.version)
+            val migratedStore = RoomScanResultStore(migrated)
+            val keptShot = migrated.scanResultDao().find(1, MediaType.Image)
+            assertEquals(ReviewStatus.Kept, keptShot!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Scored, keptShot.analysisOutcome)
+            assertEquals(ScanCategory.Screenshot, keptShot.category)
+            assertEquals(0.25f, keptShot.confidence, 0.0001f)
+            assertEquals("screenshot-rules-1", keptShot.modelVersion)
+            assertEquals(1000L, keptShot.scannedAtEpochMillis)
+            assertEquals("content://media/external/images/media/1", keptShot.contentUri)
+
+            val scored = migrated.scanResultDao().find(2, MediaType.Image)
+            assertEquals(ReviewStatus.Pending, scored!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Scored, scored.analysisOutcome)
+            assertEquals(ScanCategory.Sensitive, scored.category)
+            assertEquals(0.91f, scored.confidence, 0.0001f)
+
+            // Only a pending Unflagged/none row is marked Failed. Kept and
+            // trashed copies of that same pair stay Scored.
+            val ambiguous = migrated.scanResultDao().find(3, MediaType.Image)
+            assertEquals(ReviewStatus.Pending, ambiguous!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Failed, ambiguous.analysisOutcome)
+            assertEquals(0, ambiguous.failureCount)
+            assertEquals(ScanCategory.Unflagged, ambiguous.category)
+            assertEquals(MODEL_VERSION_NONE, ambiguous.modelVersion)
+            assertEquals(3000L, ambiguous.scannedAtEpochMillis)
+
+            val keptClean = migrated.scanResultDao().find(4, MediaType.Image)
+            assertEquals(ReviewStatus.Kept, keptClean!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Scored, keptClean.analysisOutcome)
+            assertEquals(0, keptClean.failureCount)
+            assertEquals(ScanCategory.Unflagged, keptClean.category)
+            assertEquals(0f, keptClean.confidence, 0.0001f)
+            assertEquals(MODEL_VERSION_NONE, keptClean.modelVersion)
+            assertEquals(4000L, keptClean.scannedAtEpochMillis)
+            assertEquals("content://media/external/images/media/4", keptClean.contentUri)
+
+            val trashed = migrated.scanResultDao().find(5, MediaType.Image)
+            assertEquals(ReviewStatus.Trashed, trashed!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Scored, trashed.analysisOutcome)
+            assertEquals(0, trashed.failureCount)
+            assertEquals("mlkit-face-count|face-v1", trashed.modelVersion)
+            assertEquals(2f, trashed.confidence, 0.0001f)
+            assertEquals(5000L, trashed.scannedAtEpochMillis)
+
+            val trashedClean = migrated.scanResultDao().find(7, MediaType.Image)
+            assertEquals(ReviewStatus.Trashed, trashedClean!!.reviewStatus)
+            assertEquals(AnalysisOutcome.Scored, trashedClean.analysisOutcome)
+            assertEquals(0, trashedClean.failureCount)
+            assertEquals(ScanCategory.Unflagged, trashedClean.category)
+            assertEquals(MODEL_VERSION_NONE, trashedClean.modelVersion)
+            assertEquals(7000L, trashedClean.scannedAtEpochMillis)
+            assertEquals("content://media/external/images/media/7", trashedClean.contentUri)
+
+            val namedUnflagged = migrated.scanResultDao().find(6, MediaType.Image)
+            assertEquals(AnalysisOutcome.Scored, namedUnflagged!!.analysisOutcome)
+            assertEquals("old-rule", namedUnflagged.modelVersion)
+
+            assertEquals(setOf(MediaKey(MediaType.Image, 1), MediaKey(MediaType.Image, 4)), migratedStore.keptKeys())
+            val counts = migratedStore.observePendingCounts().first()
+            assertEquals(1, counts[ScanCategory.Sensitive])
+            assertEquals(1, counts[ScanCategory.Unflagged])
+            assertEquals(0, counts[ScanCategory.People])
+            assertEquals(0, counts[ScanCategory.Screenshot])
+
+            val stillCurrent = setOf(
+                "screenshot-rules-1",
+                "nsfw-1",
+                "mlkit-face-count|face-v1",
+                MODEL_VERSION_NONE,
+                "old-rule",
+            )
+            assertEquals(
+                setOf(MediaKey(MediaType.Image, 3)),
+                migratedStore.keysNeedingRescan(stillCurrent).toSet(),
+            )
+
+            migratedStore.upsert(
+                listOf(
+                    sample(
+                        id = 1,
+                        category = ScanCategory.Sensitive,
+                        confidence = 0.99f,
+                        modelVersion = "nsfw-9",
+                        scannedAtEpochMillis = 9_000,
+                    ),
+                ),
+            )
+            val keptAfterUpsert = migrated.scanResultDao().find(1, MediaType.Image)
+            assertEquals(ReviewStatus.Kept, keptAfterUpsert!!.reviewStatus)
+            assertEquals(ScanCategory.Sensitive, keptAfterUpsert.category)
+            assertEquals(0.99f, keptAfterUpsert.confidence, 0.0001f)
+            assertEquals("nsfw-9", keptAfterUpsert.modelVersion)
+            assertEquals(AnalysisOutcome.Scored, keptAfterUpsert.analysisOutcome)
+            assertEquals(0, keptAfterUpsert.failureCount)
+
+            assertEquals(ScanPhase.Completed, migratedStore.readRun().phase)
+            assertEquals("v1", migratedStore.readRun().mediaStoreVersion)
+            assertEquals(listOf(MediaKey(MediaType.Image, 1)), migratedStore.presentKeys(MediaType.Image))
+        } finally {
+            migrated.close()
+            dbFile.delete()
+            File(dbFile.path + "-wal").delete()
+            File(dbFile.path + "-shm").delete()
         }
     }
 

@@ -13,20 +13,28 @@ import com.useinoski.gallerycleanup.model.MediaType
  * a trash request.
  *
  * [reviewStatus] is filled in when a row is read back. [RoomScanResultStore.upsert]
- * does not take a decision from this field: a new or replaced row is stored as
- * [ReviewStatus.Pending], and a row that is already [ReviewStatus.Kept] is left
- * unchanged. Decisions go through [RoomScanResultStore.markKept],
+ * does not take a decision from this field. A new row, and a row that was
+ * [ReviewStatus.Pending], is stored as [ReviewStatus.Pending]. A row that is
+ * already [ReviewStatus.Kept] or [ReviewStatus.Trashed] keeps that decision
+ * while the score is updated. Decisions go through [RoomScanResultStore.markKept],
  * [RoomScanResultStore.markTrashed], [RoomScanResultStore.markPending], and
  * [RoomScanResultStore.resetReviewed].
  *
  * [confidence] is the detector score for [category]. Probabilities are expected
  * in the range 0 to 1. [modelVersion] names the model or the rule set that
  * produced the score, so an old row can still be explained after the detector
- * changes. Pass `"none"` when nothing classified the file.
+ * changes. Pass [MODEL_VERSION_NONE] when nothing classified the file.
+ * When a detector wrote the row, that string is the identity
+ * `detectorId|modelVersion`. This table does not store detector id on its own.
  *
  * [scannedAtEpochMillis] is the wall-clock time of the scan, in milliseconds.
  * It is not the file's date. The review screen sorts screenshots by file date
  * from MediaStore, not from this column.
+ *
+ * [analysisOutcome] is filled in when a row is read back. [RoomScanResultStore.upsert]
+ * always stores [AnalysisOutcome.Scored]. A failed pass is written with
+ * [RoomScanResultStore.recordFailure], not by setting this field and calling
+ * [RoomScanResultStore.upsert].
  */
 data class ScanResult(
     val mediaStoreId: Long,
@@ -37,6 +45,7 @@ data class ScanResult(
     val modelVersion: String,
     val scannedAtEpochMillis: Long,
     val reviewStatus: ReviewStatus = ReviewStatus.Pending,
+    val analysisOutcome: AnalysisOutcome = AnalysisOutcome.Scored,
 ) {
     val key: MediaKey
         get() = MediaKey(type = mediaType, id = mediaStoreId)
@@ -46,7 +55,7 @@ data class ScanResult(
         require(contentUri.isNotBlank()) { "Content URI is required." }
         require(confidence.isFinite()) { "Confidence must be a finite number." }
         require(modelVersion.isNotBlank()) {
-            "Model version is required. Pass \"none\" when no detector ran."
+            "Model version is required. Pass MODEL_VERSION_NONE when no detector ran."
         }
     }
 }
