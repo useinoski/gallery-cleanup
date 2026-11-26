@@ -351,7 +351,7 @@ class RoomScanStoreTest {
             context,
             GalleryDatabase::class.java,
             dbFile.absolutePath,
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).allowMainThreadQueries().build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).allowMainThreadQueries().build()
         try {
             val migratedStore = RoomScanResultStore(migrated)
             assertEquals(setOf(MediaKey(MediaType.Image, 4)), migratedStore.keptKeys())
@@ -479,9 +479,9 @@ class RoomScanStoreTest {
             context,
             GalleryDatabase::class.java,
             dbFile.absolutePath,
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).allowMainThreadQueries().build()
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).allowMainThreadQueries().build()
         try {
-            assertEquals(3, migrated.openHelper.readableDatabase.version)
+            assertEquals(4, migrated.openHelper.readableDatabase.version)
             val migratedStore = RoomScanResultStore(migrated)
             val keptShot = migrated.scanResultDao().find(1, MediaType.Image)
             assertEquals(ReviewStatus.Kept, keptShot!!.reviewStatus)

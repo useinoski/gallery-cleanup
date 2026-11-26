@@ -5,6 +5,13 @@ plugins {
 
 android {
     namespace = "com.useinoski.gallerycleanup.data"
+
+    // MigrationTestHelper reads the exported schema JSON from test assets.
+    // The Room plugin writes those files under schemas/. Unit tests run on
+    // Robolectric, so the test source set needs them, not only androidTest.
+    sourceSets {
+        getByName("test").assets.srcDir("$projectDir/schemas")
+    }
 }
 
 // exportSchema on GalleryDatabase writes one JSON file per version under this
@@ -24,4 +31,5 @@ dependencies {
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.room.testing)
 }

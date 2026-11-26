@@ -94,4 +94,44 @@ class ScanSchemaExportTest {
             text.contains("\"affinity\": \"BLOB\""),
         )
     }
+
+    @Test
+    fun versionFourAddsItemCategoryWithoutABlobOrAStatusColumn() {
+        val schema = File("schemas").walkTopDown()
+            .filter { file -> file.isFile && file.name == "4.json" }
+            .singleOrNull()
+            ?: error("Room schema export for version 4 is missing under core/data/schemas.")
+        val text = schema.readText()
+        assertTrue(text.contains("\"version\": 4"))
+        assertTrue(text.contains("\"tableName\": \"item_category\""))
+        listOf("media_store_id", "media_type", "category_id").forEach { column ->
+            assertTrue(
+                "$column missing from ${schema.path}",
+                text.contains("\"columnName\": \"$column\""),
+            )
+        }
+        assertTrue(text.contains("\"name\": \"index_item_category_category_id\""))
+        assertTrue(text.contains("\"columnName\": \"analysis_outcome\""))
+        assertTrue(text.contains("\"columnName\": \"failure_count\""))
+        assertTrue(text.contains("\"columnName\": \"category\""))
+        assertFalse(
+            "the experimental flag stays on MediaCategory",
+            text.contains("\"columnName\": \"experimental\""),
+        )
+        assertFalse(
+            "item_category does not store analysis outcome or review status",
+            text.contains("\"tableName\": \"item_category\"") &&
+                text.substringAfter("\"tableName\": \"item_category\"")
+                    .substringBefore("\"tableName\":")
+                    .let { table ->
+                        table.contains("\"columnName\": \"analysis_outcome\"") ||
+                            table.contains("\"columnName\": \"failure_count\"") ||
+                            table.contains("\"columnName\": \"review_status\"")
+                    },
+        )
+        assertFalse(
+            "the database must not store a binary copy of the media",
+            text.contains("\"affinity\": \"BLOB\""),
+        )
+    }
 }
