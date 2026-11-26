@@ -39,17 +39,20 @@ internal fun interface ScanPassFactory {
  * WorkManager uses when the phone backgrounds the process (the notification
  * shade is enough on some devices) is not a user cancel. The scanner records
  * [ScanPhase.Cancelled] for every [CancellationException]; [run] puts the
- * phase back to [ScanPhase.Running] for those system stops so the screen
- * does not offer Start while the same work is about to run again. The
- * checkpoint is unchanged either way. The next execution continues from the
- * last saved batch. It does not start the counted progress over at zero.
+ * phase back to [ScanPhase.Running] when [userCancel] is false, so the screen
+ * does not offer Start while the same work is about to run again. The worker
+ * passes [isUserScanCancel] for that, using [androidx.work.ListenableWorker.getStopReason]
+ * and, if that is still [androidx.work.WorkInfo.STOP_REASON_NOT_STOPPED], the
+ * Cancel-button flag. The checkpoint is unchanged either way. The next
+ * execution continues from the last saved batch. It does not start the
+ * counted progress over at zero.
  */
 internal class LibraryScan(
     private val factory: ScanPassFactory,
 ) {
     constructor(open: () -> Pass) : this(ScanPassFactory { open() })
 
-    suspend fun run() {
+    suspend fun run(userCancel: () -> Boolean = { true }) {
         ScanPassGate.exclusive {
             val pass = factory.open()
             try {
@@ -58,7 +61,7 @@ internal class LibraryScan(
                     pass.afterPass()
                 } catch (cancelled: CancellationException) {
                     val runs = pass.runs
-                    if (runs != null && !cancelled.isUserScanCancel()) {
+                    if (runs != null && !userCancel()) {
                         restoreRunning(runs)
                     }
                     throw cancelled

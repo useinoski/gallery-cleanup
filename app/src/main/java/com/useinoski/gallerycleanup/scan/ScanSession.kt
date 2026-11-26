@@ -3,7 +3,7 @@ package com.useinoski.gallerycleanup.scan
 import androidx.work.WorkInfo
 import com.useinoski.gallerycleanup.model.ScanPhase
 import com.useinoski.gallerycleanup.model.ScanStore
-import kotlinx.coroutines.CancellationException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The home screen is in a scan while WorkManager still has the unique work,
@@ -40,29 +40,39 @@ internal suspend fun abandonRunIfNoWork(store: ScanStore, workActive: Boolean) {
 }
 
 /**
- * True when this cancellation is the user tapping Cancel.
+ * Set from the Cancel button before WorkManager is asked to stop the worker.
  *
- * WorkManager stops the worker with `WorkerStoppedException`. The reason is
- * [WorkInfo.STOP_REASON_CANCELLED_BY_APP] for [cancelLibraryScan]. A shade
- * pull, a quota stop, or the process moving to the background uses another
- * reason. Those are not a user cancel: the same unique work runs again from
- * the checkpoint. A plain [CancellationException] (a test, or a coroutine
- * we cancelled ourselves) is treated as a user cancel.
- *
- * The exception type lives in WorkManager's impl package and is not app API.
- * Reading it by name keeps the lint check for restricted APIs quiet.
+ * [androidx.work.ListenableWorker.getStopReason] is often still
+ * [WorkInfo.STOP_REASON_NOT_STOPPED] while the worker's coroutine is being
+ * cancelled. The button records the tap here first, so that window does not
+ * have to guess. [enqueueLibraryScan] clears it, and so does the worker once
+ * it has applied a known stop reason.
  */
-internal fun CancellationException.isUserScanCancel(): Boolean {
-    val seen = HashSet<Throwable>(4)
-    var current: Throwable? = this
-    while (current != null && seen.add(current)) {
-        if (current.javaClass.name == "androidx.work.impl.WorkerStoppedException") {
-            val reason = current.javaClass.methods
-                .firstOrNull { method -> method.name == "getReason" && method.parameterCount == 0 }
-                ?.invoke(current) as? Int
-            return reason == null || reason == WorkInfo.STOP_REASON_CANCELLED_BY_APP
-        }
-        current = current.cause
+internal object UserScanCancel {
+    private val requested = AtomicBoolean(false)
+
+    fun mark() {
+        requested.set(true)
     }
-    return true
+
+    fun clear() {
+        requested.set(false)
+    }
+
+    fun isRequested(): Boolean = requested.get()
+}
+
+/**
+ * True only when the user tapped Cancel.
+ *
+ * [stopReason] is [androidx.work.ListenableWorker.getStopReason]. Any reason
+ * other than [WorkInfo.STOP_REASON_CANCELLED_BY_APP] — preemption, constraints,
+ * quota, system processing, and the rest — is a system stop, and the same
+ * work resumes from the checkpoint. [WorkInfo.STOP_REASON_NOT_STOPPED] means
+ * the reason is not available yet; then [userCancelRequested], the flag
+ * recorded by the Cancel button, decides.
+ */
+internal fun isUserScanCancel(stopReason: Int, userCancelRequested: Boolean): Boolean {
+    if (stopReason == WorkInfo.STOP_REASON_NOT_STOPPED) return userCancelRequested
+    return stopReason == WorkInfo.STOP_REASON_CANCELLED_BY_APP
 }

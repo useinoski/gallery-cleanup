@@ -1,9 +1,11 @@
 package com.useinoski.gallerycleanup.scan
 
 import android.content.Context
+import android.os.Build
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.useinoski.gallerycleanup.media.LibraryScanner
@@ -64,7 +66,24 @@ class LibraryScanWorker internal constructor(
 
     override suspend fun doWork(): Result {
         return try {
-            scan.run()
+            scan.run {
+                // getStopReason is public since WorkManager 2.9 (this project is
+                // on 2.12). The method is annotated API 31 because that is when
+                // the platform started reporting stop reasons; below that it is
+                // not set, and the Cancel-button flag decides. It also stays
+                // STOP_REASON_NOT_STOPPED until WorkManager calls stop(), which
+                // is often after this coroutine is already cancelling.
+                val reason = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    stopReason
+                } else {
+                    WorkInfo.STOP_REASON_NOT_STOPPED
+                }
+                val user = isUserScanCancel(reason, UserScanCancel.isRequested())
+                if (user || reason != WorkInfo.STOP_REASON_NOT_STOPPED) {
+                    UserScanCancel.clear()
+                }
+                user
+            }
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -87,6 +106,7 @@ const val UNIQUE_LIBRARY_SCAN = "gallery-library-scan"
 const val LIBRARY_SCAN_TAG = "gallery-library-scan"
 
 fun enqueueLibraryScan(workManager: WorkManager) {
+    UserScanCancel.clear()
     val request = OneTimeWorkRequestBuilder<LibraryScanWorker>()
         .addTag(LIBRARY_SCAN_TAG)
         .build()
@@ -98,6 +118,9 @@ fun enqueueLibraryScan(workManager: WorkManager) {
 }
 
 fun cancelLibraryScan(workManager: WorkManager) {
+    // Record the tap before WorkManager cancels the worker. stopReason is
+    // often still unset when that cancellation reaches the scan.
+    UserScanCancel.mark()
     // The walk and the rescan are this one worker. Cancelling the unique
     // name stops both. The tag covers any other request marked as a scan.
     workManager.cancelUniqueWork(UNIQUE_LIBRARY_SCAN)

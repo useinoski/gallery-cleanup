@@ -58,11 +58,43 @@ class ScanSessionTest {
     }
 
     @Test
-    fun quotaStopIsNotAUserCancel() {
-        assertFalse(workerStopped(WorkInfo.STOP_REASON_QUOTA).isUserScanCancel())
-        assertFalse(workerStopped(WorkInfo.STOP_REASON_BACKGROUND_RESTRICTION).isUserScanCancel())
-        assertTrue(workerStopped(WorkInfo.STOP_REASON_CANCELLED_BY_APP).isUserScanCancel())
-        assertTrue(CancellationException("stop").isUserScanCancel())
+    fun onlyAnAppCancelIsAUserStop() {
+        val systemStops = intArrayOf(
+            WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT,
+            WorkInfo.STOP_REASON_UNKNOWN,
+            WorkInfo.STOP_REASON_PREEMPT,
+            WorkInfo.STOP_REASON_TIMEOUT,
+            WorkInfo.STOP_REASON_DEVICE_STATE,
+            WorkInfo.STOP_REASON_CONSTRAINT_BATTERY_NOT_LOW,
+            WorkInfo.STOP_REASON_CONSTRAINT_CHARGING,
+            WorkInfo.STOP_REASON_CONSTRAINT_CONNECTIVITY,
+            WorkInfo.STOP_REASON_CONSTRAINT_DEVICE_IDLE,
+            WorkInfo.STOP_REASON_CONSTRAINT_STORAGE_NOT_LOW,
+            WorkInfo.STOP_REASON_QUOTA,
+            WorkInfo.STOP_REASON_BACKGROUND_RESTRICTION,
+            WorkInfo.STOP_REASON_APP_STANDBY,
+            WorkInfo.STOP_REASON_USER,
+            WorkInfo.STOP_REASON_SYSTEM_PROCESSING,
+            WorkInfo.STOP_REASON_ESTIMATED_APP_LAUNCH_TIME_CHANGED,
+        )
+        for (reason in systemStops) {
+            assertFalse(isUserScanCancel(reason, userCancelRequested = false))
+            assertFalse(isUserScanCancel(reason, userCancelRequested = true))
+        }
+        assertTrue(isUserScanCancel(WorkInfo.STOP_REASON_CANCELLED_BY_APP, userCancelRequested = false))
+        assertTrue(isUserScanCancel(WorkInfo.STOP_REASON_CANCELLED_BY_APP, userCancelRequested = true))
+        assertFalse(isUserScanCancel(WorkInfo.STOP_REASON_NOT_STOPPED, userCancelRequested = false))
+        assertTrue(isUserScanCancel(WorkInfo.STOP_REASON_NOT_STOPPED, userCancelRequested = true))
+    }
+
+    @Test
+    fun theCancelFlagIsWhatDecidesWhileStopReasonIsUnset() {
+        UserScanCancel.clear()
+        assertFalse(isUserScanCancel(WorkInfo.STOP_REASON_NOT_STOPPED, UserScanCancel.isRequested()))
+        UserScanCancel.mark()
+        assertTrue(isUserScanCancel(WorkInfo.STOP_REASON_NOT_STOPPED, UserScanCancel.isRequested()))
+        UserScanCancel.clear()
+        assertFalse(UserScanCancel.isRequested())
     }
 
     @Test
@@ -137,7 +169,7 @@ class ScanSessionTest {
                     observer = ScanBatchObserver {
                         batches += 1
                         if (interrupt && batches >= 2) {
-                            throw workerStopped(WorkInfo.STOP_REASON_QUOTA)
+                            throw CancellationException("quota")
                         }
                     },
                     batchSize = 2,
@@ -149,9 +181,12 @@ class ScanSessionTest {
         }
 
         try {
-            scan.run()
-        } catch (cancelled: CancellationException) {
-            assertFalse(cancelled.isUserScanCancel())
+            // Quota is a system stop even if the Cancel flag is also set.
+            scan.run {
+                isUserScanCancel(WorkInfo.STOP_REASON_QUOTA, userCancelRequested = true)
+            }
+        } catch (_: CancellationException) {
+            // The worker rethrows so WorkManager can reschedule the same work.
         }
 
         assertEquals(ScanPhase.Running, store.readRun().phase)
@@ -181,7 +216,7 @@ class ScanSessionTest {
                 scanner = testScanner(
                     library = library,
                     store = store,
-                    observer = ScanBatchObserver { throw workerStopped(WorkInfo.STOP_REASON_CANCELLED_BY_APP) },
+                    observer = ScanBatchObserver { throw CancellationException("cancel") },
                     batchSize = 10,
                     generation = 4,
                 ),
@@ -190,7 +225,9 @@ class ScanSessionTest {
         }
 
         try {
-            scan.run()
+            scan.run {
+                isUserScanCancel(WorkInfo.STOP_REASON_CANCELLED_BY_APP, userCancelRequested = false)
+            }
         } catch (_: CancellationException) {
             // The worker rethrows so WorkManager can finish the cancel.
         }
@@ -332,12 +369,6 @@ class ScanSessionTest {
         assertEquals(1, maxInFlight.get())
         assertEquals(2, opens)
     }
-}
-
-private fun workerStopped(reason: Int): CancellationException {
-    val type = Class.forName("androidx.work.impl.WorkerStoppedException")
-    val constructor = type.getDeclaredConstructor(Int::class.javaPrimitiveType)
-    return constructor.newInstance(reason) as CancellationException
 }
 
 private class HangingLibrary(
