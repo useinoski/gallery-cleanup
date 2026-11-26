@@ -1,6 +1,10 @@
 package com.useinoski.gallerycleanup.detection.eval
 
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.graphics.Bitmap
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
 import com.useinoski.gallerycleanup.detection.R
@@ -44,6 +48,50 @@ class NsfwLabelActivityTest {
         assertFalse(activity.findViewById<Button>(R.id.nsfw_labeler_copy).isEnabled)
         assertFalse(activity.findViewById<Button>(R.id.nsfw_labeler_run).isEnabled)
         controller.destroy()
+    }
+
+    @Test
+    fun theWindowIsSecure() {
+        val controller = Robolectric.buildActivity(NsfwLabelActivity::class.java).setup()
+        val activity = controller.get()
+        val flags = activity.window.attributes.flags
+        assertTrue(flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
+        controller.destroy()
+    }
+
+    @Test
+    fun copySummaryMarksTheClipSensitiveOnApi33() {
+        val clip = copiedSummary()
+        val extras = clip.description.extras
+        assertEquals(true, extras.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE))
+        assertEquals(SUMMARY, clip.getItemAt(0).text.toString())
+    }
+
+    @Test
+    @Config(sdk = [30])
+    fun copySummaryLeavesSensitiveExtrasOffBeforeApi33() {
+        val clip = copiedSummary()
+        assertEquals(null, clip.description.extras)
+        assertEquals(SUMMARY, clip.getItemAt(0).text.toString())
+    }
+
+    private fun copiedSummary(): ClipData {
+        val controller = Robolectric.buildActivity(NsfwLabelActivity::class.java).setup()
+        val activity = controller.get()
+        val summary = NsfwLabelActivity::class.java.getDeclaredField("latestSummary")
+        summary.isAccessible = true
+        summary.set(activity, SUMMARY)
+        val copy = activity.findViewById<Button>(R.id.nsfw_labeler_copy)
+        copy.isEnabled = true
+        assertTrue(copy.performClick())
+        val clipboard = activity.getSystemService(ClipboardManager::class.java)
+        val clip = clipboard.primaryClip
+        controller.destroy()
+        return checkNotNull(clip)
+    }
+
+    private companion object {
+        const val SUMMARY = "explicit 1, not explicit 2, unsure 0, immodest 0"
     }
 }
 

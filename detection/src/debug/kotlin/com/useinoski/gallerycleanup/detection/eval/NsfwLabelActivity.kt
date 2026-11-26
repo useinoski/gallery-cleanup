@@ -3,12 +3,15 @@ package com.useinoski.gallerycleanup.detection.eval
 import android.Manifest
 import android.app.Activity
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
+import android.os.PersistableBundle
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -69,6 +72,8 @@ class NsfwLabelActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Blank in the recents preview and in screenshots. Set before the window is drawn.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val appContext = applicationContext
         store = NsfwLabelStore(appContext)
         photos = NsfwPhotoQueue(appContext.contentResolver)
@@ -236,7 +241,13 @@ class NsfwLabelActivity : Activity() {
     private fun copySummary() {
         val text = latestSummary ?: return
         val clipboard = getSystemService(ClipboardManager::class.java) ?: return
-        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.nsfw_labeler_clip_label), text))
+        val clip = ClipData.newPlainText(getString(R.string.nsfw_labeler_clip_label), text)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val extras = PersistableBundle()
+            extras.putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+            clip.description.setExtras(extras)
+        }
+        clipboard.setPrimaryClip(clip)
         showStatus(R.string.nsfw_labeler_copied)
     }
 
