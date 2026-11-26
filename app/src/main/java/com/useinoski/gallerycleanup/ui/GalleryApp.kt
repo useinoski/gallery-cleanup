@@ -69,7 +69,7 @@ fun GalleryApp(
 
     LifecycleResumeEffect(reader) {
         viewModel.refresh(reader.snapshot())
-        onPauseOrDispose { }
+        onPauseOrDispose { viewModel.onHostPaused() }
     }
 
     fun launch(permissions: List<String>) {
@@ -147,6 +147,7 @@ fun GalleryApp(
                         onOpenSettings = { activity?.openAppSettings() },
                         onRetry = { viewModel.refresh(reader.snapshot()) },
                         scan = state.scan,
+                        workActive = state.scanWorkActive,
                         onStartScan = { viewModel.startScan() },
                         onCancelScan = { viewModel.cancelScan() },
                         flaggedCounts = state.flaggedCounts,

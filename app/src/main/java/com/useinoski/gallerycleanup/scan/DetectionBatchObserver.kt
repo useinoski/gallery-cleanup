@@ -9,8 +9,10 @@ import com.useinoski.gallerycleanup.model.MediaItem
 import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
@@ -60,6 +62,7 @@ internal class DetectionBatchObserver(
 
     override suspend fun onBatch(items: List<MediaItem>) {
         if (items.isEmpty()) return
+        coroutineContext.ensureActive()
         val latest = LinkedHashMap<MediaKey, MediaItem>(items.size)
         for (item in items) {
             latest[MediaKey(item.type, item.id)] = item
@@ -76,7 +79,10 @@ internal class DetectionBatchObserver(
         supervisorScope {
             pending.map { item ->
                 async {
+                    // A cancel during this batch must not start another item.
+                    coroutineContext.ensureActive()
                     slots.withPermit {
+                        coroutineContext.ensureActive()
                         if (revoked.get() != null) return@withPermit
                         try {
                             val scored = ItemOutcome.Scored(toResult(item))
