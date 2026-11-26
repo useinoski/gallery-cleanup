@@ -62,7 +62,8 @@ enum class MediaCategory(
     ),
 
     /**
-     * Screenshots. A later rule matches the Screenshots folder.
+     * Screenshots. The rule in `:core:media` matches a `Screenshots` or
+     * `Bildschirmfotos` folder, or a file name that starts with `Screenshot`.
      * Memes and chat-app downloads are [ChatImages].
      */
     Screenshots(
@@ -72,9 +73,9 @@ enum class MediaCategory(
     ),
 
     /**
-     * Memes and pictures saved by a chat app. The scan today files a meme
-     * label with the screenshots. This category is that split. The rule is
-     * a later change.
+     * Memes and pictures saved by a chat app. The folder list lives in
+     * `:core:media`. The scan still files a meme label with the screenshots
+     * until that rule is wired to the worker.
      */
     ChatImages(
         id = "chat-images",
@@ -83,9 +84,11 @@ enum class MediaCategory(
     ),
 
     /**
-     * Files old enough to review. The age cutoff belongs to the rule, which
-     * is not in this module. Prefer [MediaItemMetadata.dateTakenMillis] when
-     * it is present, and [MediaItemMetadata.dateAdded] otherwise.
+     * Files old enough to review. The window is 1, 3, 6, or 12 months, and
+     * the default is 6. That choice lives on the rule in `:core:media`.
+     * The rule reads a positive [MediaItemMetadata.dateTakenMillis],
+     * otherwise a positive [MediaItemMetadata.dateModified], otherwise a
+     * positive [MediaItemMetadata.dateAdded].
      */
     OldItems(
         id = "old-items",

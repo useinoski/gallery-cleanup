@@ -27,10 +27,16 @@ package com.useinoski.gallerycleanup.model
  * file name back out.
  *
  * [dateAdded] is seconds since the Unix epoch, the same unit as
- * [MediaItem.dateAdded]. [dateTakenMillis] is milliseconds, which is what
- * `DATE_TAKEN` stores. Null when the row has no date taken. A negative
- * number is a broken timestamp, and a rule treats it as missing. This type
- * does not reject it, because the value came from the file.
+ * [MediaItem.dateAdded]. [dateModified] is MediaStore `DATE_MODIFIED`, also
+ * seconds. Null when the scan did not copy that column. `0` is not a real
+ * modification time.
+ *
+ * [dateTakenMillis] is milliseconds, which is what `DATE_TAKEN` stores.
+ * Null when the row has no date taken. `0` is missing, the same as null.
+ * A negative number is a broken timestamp. This type does not reject it,
+ * because the value came from the file. The old-item rule treats null, `0`,
+ * and a negative taken date as missing and then tries [dateModified], then
+ * [dateAdded].
  *
  * [durationMillis] is milliseconds. Null for a still image and for any row
  * that does not report a duration. [size] is bytes, the same unit as
@@ -49,6 +55,7 @@ data class MediaItemMetadata(
     val mimeType: String?,
     val dateTakenMillis: Long?,
     val dateAdded: Long,
+    val dateModified: Long? = null,
     val durationMillis: Long?,
     val isMusic: Boolean,
     val size: Long,
