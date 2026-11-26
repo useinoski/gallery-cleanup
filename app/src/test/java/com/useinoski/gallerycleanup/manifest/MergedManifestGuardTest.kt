@@ -68,7 +68,7 @@ class MergedManifestGuardTest {
         """.trimIndent()
         assertEquals(
             listOf("com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"),
-            forbiddenComponentsIn(xml, forbiddenComponents),
+            forbiddenComponentsIn(xml, forbiddenComponents, allowedComponents),
         )
     }
 
@@ -77,16 +77,30 @@ class MergedManifestGuardTest {
         val xml = """
             <receiver android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver" />
             <provider android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery" />
-            <service android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService" />
+            <service
+                android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+                android:exported="false"
+                android:permission="android.permission.BIND_JOB_SERVICE" />
         """.trimIndent()
         assertEquals(
             listOf(
                 "com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
                 "com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
-                "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
             ),
-            forbiddenComponentsIn(xml, forbiddenComponents),
+            forbiddenComponentsIn(xml, forbiddenComponents, allowedComponents),
         )
+        assertEquals(null, jobInfoSchedulerProblem(xml))
+    }
+
+    @Test
+    fun anExportedJobInfoSchedulerServiceIsAViolation() {
+        val xml = """
+            <service
+                android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+                android:exported="true" />
+        """.trimIndent()
+        assertEquals(emptyList<String>(), forbiddenComponentsIn(xml, forbiddenComponents, allowedComponents))
+        assertTrue(jobInfoSchedulerProblem(xml)!!.contains("BIND_JOB_SERVICE"))
     }
 
     @Test
@@ -95,7 +109,7 @@ class MergedManifestGuardTest {
             <service android:name="com.google.android.gms.play-services-mlkit-face-detection.ModelDownloadService" />
             <meta-data android:name="com.google.android.gms:play-services-mlkit-face-detection" android:value="17.1.0" />
         """.trimIndent()
-        val found = forbiddenComponentsIn(xml, forbiddenComponents)
+        val found = forbiddenComponentsIn(xml, forbiddenComponents, allowedComponents)
         assertTrue(found.contains("com.google.android.gms.play-services-mlkit-face-detection.ModelDownloadService"))
         assertTrue(found.contains("play-services-mlkit-face-detection"))
     }
@@ -109,7 +123,7 @@ class MergedManifestGuardTest {
         """.trimIndent()
         assertEquals(
             listOf("com.google.android.gms.common.api.GoogleApiActivity"),
-            forbiddenComponentsIn(xml, forbiddenComponents),
+            forbiddenComponentsIn(xml, forbiddenComponents, allowedComponents),
         )
     }
 
@@ -128,6 +142,9 @@ class MergedManifestGuardTest {
             }
         }
         assertFalse(xml.contains("play-services-mlkit-face-detection"))
+        assertEquals(null, jobInfoSchedulerProblem(xml))
+        assertFalse(componentTags(xml, "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService")
+            .any { tag -> tag.contains("""tools:node="remove"""") })
     }
 
     @Test
@@ -144,12 +161,15 @@ class MergedManifestGuardTest {
         val manifests = mergedManifests()
         manifests.forEach { manifest ->
             val xml = manifest.readText()
-            val found = forbiddenComponentsIn(xml, forbiddenComponents)
+            val found = forbiddenComponentsIn(xml, forbiddenComponents, allowedComponents)
             assertTrue("${manifest.path} contains $found", found.isEmpty())
+            assertEquals("${manifest.path}: ${jobInfoSchedulerProblem(xml)}", null, jobInfoSchedulerProblem(xml))
             assertFalse(xml.contains("INTERNET"))
             assertFalse(xml.contains("ACCESS_NETWORK_STATE"))
-            assertFalse(xml.contains("datatransport"))
+            assertFalse(xml.contains("TransportBackendDiscovery"))
+            assertFalse(xml.contains("AlarmManagerSchedulerBroadcastReceiver"))
             assertFalse(xml.contains("play-services-mlkit-face-detection"))
+            assertFalse(xml.contains("GoogleApiActivity"))
         }
     }
 
@@ -165,6 +185,7 @@ class MergedManifestGuardTest {
 
     private val forbidden: Set<String> = nameList("../gradle/forbidden-permissions.txt")
     private val forbiddenComponents: Set<String> = nameList("../gradle/forbidden-manifest-components.txt")
+    private val allowedComponents: Set<String> = nameList("../gradle/allowed-manifest-components.txt")
 }
 
 private fun nameList(path: String): Set<String> = File(path)
@@ -181,15 +202,21 @@ internal fun forbiddenPermissionsIn(xml: String, forbidden: Set<String>): List<S
     }.filter { permission -> permission in forbidden }.distinct().toList()
 }
 
-internal fun forbiddenComponentsIn(xml: String, forbidden: Set<String>): List<String> {
+internal fun forbiddenComponentsIn(
+    xml: String,
+    forbidden: Set<String>,
+    allowed: Set<String>,
+): List<String> {
     val tags = Regex("""<(service|receiver|provider|activity)\b([^>]*)>""", RegexOption.IGNORE_CASE)
     val name = Regex("""android:name\s*=\s*"([^"]+)"""")
     val fromTags = tags.findAll(xml).mapNotNull { match ->
         name.find(match.groupValues[2])?.groupValues?.get(1)
     }.filter { component ->
-        component in forbidden ||
-            component.contains("datatransport") ||
-            component.contains("play-services-mlkit")
+        component !in allowed && (
+            component in forbidden ||
+                component.contains("datatransport") ||
+                component.contains("play-services-mlkit")
+            )
     }
     val artifact = if (xml.contains("play-services-mlkit-face-detection")) {
         listOf("play-services-mlkit-face-detection")
@@ -197,6 +224,23 @@ internal fun forbiddenComponentsIn(xml: String, forbidden: Set<String>): List<St
         emptyList()
     }
     return (fromTags + artifact).distinct().toList()
+}
+
+internal fun jobInfoSchedulerProblem(xml: String): String? {
+    val service = "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+    val tags = Regex("""<service\b[^>]*android:name="$service"[^>]*>""")
+        .findAll(xml)
+        .map { match -> match.value }
+        .toList()
+    if (tags.isEmpty()) return "missing $service"
+    val unlocked = tags.filterNot { tag ->
+        tag.contains("""android:exported="false"""") &&
+            tag.contains("""android:permission="android.permission.BIND_JOB_SERVICE"""")
+    }
+    if (unlocked.isNotEmpty()) {
+        return "$service must stay exported=false and require BIND_JOB_SERVICE"
+    }
+    return null
 }
 
 private fun permissionTag(xml: String, permission: String): String {

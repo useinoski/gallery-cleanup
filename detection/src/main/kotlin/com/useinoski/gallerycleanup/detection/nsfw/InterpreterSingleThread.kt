@@ -31,20 +31,26 @@ internal class InterpreterSingleThread<T : AutoCloseable>(
     val current: T?
         get() = synchronized(state) { instance }
 
-    suspend fun <R> use(block: (T) -> R): R = withContext(dispatcher) {
-        check(Thread.currentThread() === thread) { "LiteRT interpreter left $THREAD_NAME" }
-        val current = synchronized(state) {
-            check(!closed) { "detector is closed" }
-            instance ?: factory().also { created -> instance = created }
+    val isExecutorShutdown: Boolean
+        get() = executor.isShutdown
+
+    suspend fun <R> use(block: (T) -> R): R {
+        check(!isClosed()) { "detector is closed" }
+        return withContext(dispatcher) {
+            check(Thread.currentThread() === thread) { "LiteRT interpreter left $THREAD_NAME" }
+            val current = synchronized(state) {
+                check(!closed) { "detector is closed" }
+                instance ?: factory().also { created -> instance = created }
+            }
+            block(current)
         }
-        block(current)
     }
 
     override fun close() {
         try {
             if (Thread.currentThread() === thread) {
                 closeOnInterpreterThread()
-            } else {
+            } else if (!executor.isShutdown) {
                 try {
                     executor.submit { closeOnInterpreterThread() }.get()
                 } catch (_: RejectedExecutionException) {
@@ -55,6 +61,8 @@ internal class InterpreterSingleThread<T : AutoCloseable>(
             dispatcher.close()
         }
     }
+
+    private fun isClosed(): Boolean = synchronized(state) { closed }
 
     private fun closeOnInterpreterThread() {
         val toClose = synchronized(state) {

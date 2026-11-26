@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
@@ -51,6 +52,34 @@ class NsfwInterpreterThreadTest {
             assertEquals("marqo-nsfw-interpreter", interpreterThread.name)
             assertTrue(callers.none { caller -> caller === interpreterThread })
             assertTrue(callers.size >= 2)
+        } finally {
+            session.close()
+        }
+    }
+
+    @Test
+    fun closeIsIdempotentFromAnyThreadAndUseAfterCloseFails() {
+        val session = InterpreterSingleThread { FakeInterpreter() }
+        try {
+            runBlocking {
+                session.use { interpreter ->
+                    interpreter.run(floatArrayOf(1f))
+                    // Same thread the interpreter was created on.
+                    session.close()
+                }
+            }
+            assertTrue(session.isExecutorShutdown)
+            session.close()
+            thread(name = "close-again") { session.close() }.join()
+            assertTrue(session.isExecutorShutdown)
+            runBlocking {
+                try {
+                    session.use { interpreter -> interpreter.run(floatArrayOf(2f)) }
+                    fail("use after close should fail")
+                } catch (closed: IllegalStateException) {
+                    assertTrue(closed.message!!.contains("detector is closed"))
+                }
+            }
         } finally {
             session.close()
         }

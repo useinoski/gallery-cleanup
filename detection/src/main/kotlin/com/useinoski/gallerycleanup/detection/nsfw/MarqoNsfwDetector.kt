@@ -49,8 +49,10 @@ class MarqoNsfwDetector(
         get() = session.current?.backendName ?: "not-loaded"
 
     override suspend fun classify(input: Bitmap): DetectionResult {
+        // Before the hop. Inside session.use this thread is marqo-nsfw-interpreter,
+        // so the check would no longer see a main-thread caller.
+        checkOffMainThread()
         val logits = session.use { runtime ->
-            checkOffMainThread()
             val nchw = preprocess(input)
             runtime.run(nchw)
         }

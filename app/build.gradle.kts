@@ -48,6 +48,7 @@ dependencies {
 // the debug check.
 val forbiddenPermissionNames: Set<String> = manifestNameList("gradle/forbidden-permissions.txt")
 val forbiddenComponentNames: Set<String> = manifestNameList("gradle/forbidden-manifest-components.txt")
+val allowedComponentNames: Set<String> = manifestNameList("gradle/allowed-manifest-components.txt")
 
 listOf("debug", "release").forEach { variant ->
     val cap = variant.replaceFirstChar { it.uppercase() }
@@ -74,14 +75,18 @@ listOf("debug", "release").forEach { variant ->
                             "MANAGE_EXTERNAL_STORAGE, or MANAGE_MEDIA.",
                     )
                 }
-                val components = forbiddenComponentsIn(xml, forbiddenComponentNames)
+                val components = forbiddenComponentsIn(xml, forbiddenComponentNames, allowedComponentNames)
                 if (components.isNotEmpty()) {
                     error(
                         "Merged manifest ${manifest.path} contains forbidden components: " +
                             components.joinToString() +
-                            ". Remove datatransport telemetry, Play Services resolution UI, " +
+                            ". Remove datatransport discovery, Play Services resolution UI, " +
                             "and play-services-mlkit-face-detection manifest entries.",
                     )
+                }
+                val scheduler = jobInfoSchedulerProblem(xml)
+                if (scheduler != null) {
+                    error("Merged manifest ${manifest.path}: $scheduler")
                 }
             }
             // resolutionResult, not resolvedConfiguration: the Android runtime
@@ -118,8 +123,10 @@ listOf("debug", "release").forEach { variant ->
     }
 }
 
-tasks.matching { task -> task.name == "testDebugUnitTest" }.configureEach {
-    dependsOn("checkDebugMergedManifest")
+tasks.matching { task ->
+    task.name == "testDebugUnitTest" || task.name == "testReleaseUnitTest"
+}.configureEach {
+    dependsOn("checkDebugMergedManifest", "checkReleaseMergedManifest")
 }
 
 fun manifestNameList(path: String): Set<String> = rootProject.file(path)
@@ -136,15 +143,17 @@ fun forbiddenPermissionsIn(xml: String, forbidden: Set<String>): List<String> {
     }.filter { permission -> permission in forbidden }.distinct().toList()
 }
 
-fun forbiddenComponentsIn(xml: String, forbidden: Set<String>): List<String> {
+fun forbiddenComponentsIn(xml: String, forbidden: Set<String>, allowed: Set<String>): List<String> {
     val tags = Regex("""<(service|receiver|provider|activity)\b([^>]*)>""", RegexOption.IGNORE_CASE)
     val name = Regex("""android:name\s*=\s*"([^"]+)"""")
     val fromTags = tags.findAll(xml).mapNotNull { match ->
         name.find(match.groupValues[2])?.groupValues?.get(1)
     }.filter { component ->
-        component in forbidden ||
-            component.contains("datatransport") ||
-            component.contains("play-services-mlkit")
+        component !in allowed && (
+            component in forbidden ||
+                component.contains("datatransport") ||
+                component.contains("play-services-mlkit")
+            )
     }
     val artifact = if (xml.contains("play-services-mlkit-face-detection")) {
         listOf("play-services-mlkit-face-detection")
@@ -152,4 +161,21 @@ fun forbiddenComponentsIn(xml: String, forbidden: Set<String>): List<String> {
         emptyList()
     }
     return (fromTags + artifact).distinct().toList()
+}
+
+fun jobInfoSchedulerProblem(xml: String): String? {
+    val service = "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+    val tags = Regex("""<service\b[^>]*android:name="$service"[^>]*>""")
+        .findAll(xml)
+        .map { match -> match.value }
+        .toList()
+    if (tags.isEmpty()) return "missing $service"
+    val unlocked = tags.filterNot { tag ->
+        tag.contains("""android:exported="false"""") &&
+            tag.contains("""android:permission="android.permission.BIND_JOB_SERVICE"""")
+    }
+    if (unlocked.isNotEmpty()) {
+        return "$service must stay exported=false and require BIND_JOB_SERVICE"
+    }
+    return null
 }

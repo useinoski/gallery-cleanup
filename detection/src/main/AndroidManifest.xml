@@ -13,18 +13,26 @@
         tools:node="remove" />
 
     <application>
-        <!-- datatransport rides in with bundled ML Kit for telemetry upload.
-             The models are already in the APK. transport-runtime 2.2.6 declares
-             TransportBackendDiscovery as a service; older releases used a provider. -->
+        <!-- Discovery is how MetadataBackendRegistry finds the CCT backend.
+             Without this service, DefaultScheduler drops the event and never
+             schedules. Older releases declared the same class as a provider. -->
         <service
             android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
             tools:node="remove" />
         <provider
             android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
             tools:node="remove" />
+        <!-- JobInfoScheduler.schedule calls JobScheduler.schedule and does not
+             catch. TransportRuntime's constructor runs WorkInitializer, which
+             reschedules every persisted transport context with no backend
+             check, so removing this service can throw IllegalArgumentException
+             ("No such service ComponentInfo") even with discovery gone.
+             AlarmManagerScheduler is not restored: SchedulingModule only
+             constructs it when SDK_INT is below 21, and minSdk is 30. -->
         <service
             android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
-            tools:node="remove" />
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <receiver
             android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
             tools:node="remove" />
