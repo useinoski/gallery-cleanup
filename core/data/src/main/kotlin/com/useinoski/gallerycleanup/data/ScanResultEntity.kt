@@ -22,6 +22,7 @@ import com.useinoski.gallerycleanup.model.MediaType
         Index(value = ["content_uri"], unique = true),
         Index(value = ["category", "review_status"]),
         Index(value = ["review_status"]),
+        Index(value = ["analysis_outcome", "model_version"]),
     ],
 )
 data class ScanResultEntity(
@@ -41,6 +42,13 @@ data class ScanResultEntity(
     val scannedAtEpochMillis: Long,
     @ColumnInfo(name = "review_status")
     val reviewStatus: ReviewStatus,
+    /**
+     * `Scored` unless [RoomScanResultStore.recordFailure] wrote the row.
+     * The SQL default matches [MIGRATION_2_3], which adds the column as
+     * `Scored` and then marks old `Unflagged` / `none` rows `Failed`.
+     */
+    @ColumnInfo(name = "analysis_outcome", defaultValue = "'Scored'")
+    val analysisOutcome: AnalysisOutcome,
 )
 
 internal fun ScanResult.toEntity(): ScanResultEntity = ScanResultEntity(
@@ -51,8 +59,10 @@ internal fun ScanResult.toEntity(): ScanResultEntity = ScanResultEntity(
     confidence = confidence,
     modelVersion = modelVersion,
     scannedAtEpochMillis = scannedAtEpochMillis,
-    // upsert always stores pending. Kept rows are filtered out before this runs.
+    // upsert always stores pending and scored. Kept rows are filtered out
+    // before this runs. Failures go through AnalysisFailure.toEntity.
     reviewStatus = ReviewStatus.Pending,
+    analysisOutcome = AnalysisOutcome.Scored,
 )
 
 internal fun ScanResultEntity.toResult(): ScanResult = ScanResult(
@@ -64,4 +74,5 @@ internal fun ScanResultEntity.toResult(): ScanResult = ScanResult(
     modelVersion = modelVersion,
     scannedAtEpochMillis = scannedAtEpochMillis,
     reviewStatus = reviewStatus,
+    analysisOutcome = analysisOutcome,
 )

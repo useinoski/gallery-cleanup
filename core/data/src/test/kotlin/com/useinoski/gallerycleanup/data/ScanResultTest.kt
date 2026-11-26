@@ -23,8 +23,10 @@ class ScanResultTest {
     }
 
     @Test
-    fun aNewResultDefaultsToPending() {
-        assertEquals(ReviewStatus.Pending, sample(id = 1).reviewStatus)
+    fun aNewResultDefaultsToPendingAndScored() {
+        val result = sample(id = 1)
+        assertEquals(ReviewStatus.Pending, result.reviewStatus)
+        assertEquals(AnalysisOutcome.Scored, result.analysisOutcome)
     }
 
     @Test

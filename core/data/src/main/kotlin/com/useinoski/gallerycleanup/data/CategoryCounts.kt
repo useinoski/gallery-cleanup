@@ -4,8 +4,11 @@ package com.useinoski.gallerycleanup.data
  * How many items are still waiting for a decision, per [ScanCategory].
  *
  * Every category is present, including those with a count of zero. Kept and
- * trashed rows are not included. [flagged] skips [ScanCategory.Unflagged],
- * which is a scanned file with nothing to suggest.
+ * trashed rows are not included. A row whose media item is marked removed is
+ * not included; it comes back when that item is present again. A failed
+ * analysis is not included in any category, including [ScanCategory.Unflagged].
+ * [flagged] skips [ScanCategory.Unflagged], which is a scored file with
+ * nothing to suggest.
  */
 data class CategoryCounts(
     val pending: Map<ScanCategory, Int>,
