@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Debug variant only. This file is not merged into the release APK.
+      No permissions: the screen uses the photo grant the app already has.
+    -->
+    <application>
+        <activity
+            android:name=".eval.NsfwLabelActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/nsfw_labeler_title"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
