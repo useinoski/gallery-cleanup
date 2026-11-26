@@ -18,13 +18,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.useinoski.gallerycleanup.R
+import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.media.AccessRequest
 import com.useinoski.gallerycleanup.media.AudioScanRequest
 import com.useinoski.gallerycleanup.media.audioScanRequest
@@ -34,6 +38,7 @@ import com.useinoski.gallerycleanup.permission.DevicePermissionReader
 import com.useinoski.gallerycleanup.permission.openAppSettings
 import com.useinoski.gallerycleanup.prefs.GalleryPreferences
 import com.useinoski.gallerycleanup.prefs.GALLERY_PREFS
+import com.useinoski.gallerycleanup.review.ReviewRoute
 import com.useinoski.gallerycleanup.ui.home.HomeScreen
 import com.useinoski.gallerycleanup.ui.home.HomeViewModel
 import com.useinoski.gallerycleanup.ui.navigation.GalleryDestination
@@ -60,6 +65,10 @@ fun GalleryApp(
     reader: DevicePermissionReader,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // The one route into ReviewRoute. Null is home. The name is saved so a
+    // rotation stays on the category the user opened. ScanCategory is the
+    // type the route takes today; the review module maps it in one place.
+    var reviewCategoryName by rememberSaveable { mutableStateOf<String?>(null) }
     val activity = LocalActivity.current
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -105,53 +114,64 @@ fun GalleryApp(
                 is GalleryDestination.Home -> {
                     val access = destination.access
                     val sdk = Build.VERSION.SDK_INT
-                    HomeScreen(
-                        access = access,
-                        counts = state.counts,
-                        audioScanningEnabled = state.audioScanningEnabled,
-                        loading = state.loading,
-                        failed = state.failed,
-                        sdkInt = sdk,
-                        onSelectMore = {
-                            launch(permissionsToRequest(sdk, access, AccessRequest.SelectMore))
-                        },
-                        onAllowAll = { activity?.openAppSettings() },
-                        onAllowImages = {
-                            if (access.images is PermissionState.PermanentlyDenied) {
-                                activity?.openAppSettings()
-                            } else {
-                                launch(permissionsToRequest(sdk, access, AccessRequest.Images))
-                            }
-                        },
-                        onAllowVideos = {
-                            if (access.videos is PermissionState.PermanentlyDenied) {
-                                activity?.openAppSettings()
-                            } else {
-                                launch(permissionsToRequest(sdk, access, AccessRequest.Videos))
-                            }
-                        },
-                        onTurnOnAudio = {
-                            when (val action = audioScanRequest(sdk, access)) {
-                                is AudioScanRequest.AskPermission -> {
-                                    viewModel.setAudioScanningEnabled(true)
-                                    launch(action.permissions)
+                    val openReview = reviewCategoryName?.let { name ->
+                        ScanCategory.entries.firstOrNull { category -> category.name == name }
+                    }
+                    if (openReview != null) {
+                        ReviewRoute(
+                            category = openReview,
+                            onBack = { reviewCategoryName = null },
+                        )
+                    } else {
+                        HomeScreen(
+                            access = access,
+                            counts = state.counts,
+                            audioScanningEnabled = state.audioScanningEnabled,
+                            loading = state.loading,
+                            failed = state.failed,
+                            sdkInt = sdk,
+                            onSelectMore = {
+                                launch(permissionsToRequest(sdk, access, AccessRequest.SelectMore))
+                            },
+                            onAllowAll = { activity?.openAppSettings() },
+                            onAllowImages = {
+                                if (access.images is PermissionState.PermanentlyDenied) {
+                                    activity?.openAppSettings()
+                                } else {
+                                    launch(permissionsToRequest(sdk, access, AccessRequest.Images))
                                 }
-                                AudioScanRequest.AlreadyAllowed -> {
-                                    viewModel.setAudioScanningEnabled(true)
-                                    viewModel.refresh(reader.snapshot())
+                            },
+                            onAllowVideos = {
+                                if (access.videos is PermissionState.PermanentlyDenied) {
+                                    activity?.openAppSettings()
+                                } else {
+                                    launch(permissionsToRequest(sdk, access, AccessRequest.Videos))
                                 }
-                                AudioScanRequest.OpenSettings -> activity?.openAppSettings()
-                                AudioScanRequest.NeedPhotoAccessFirst -> Unit
-                            }
-                        },
-                        onOpenSettings = { activity?.openAppSettings() },
-                        onRetry = { viewModel.refresh(reader.snapshot()) },
-                        scan = state.scan,
-                        workActive = state.scanWorkActive,
-                        onStartScan = { viewModel.startScan() },
-                        onCancelScan = { viewModel.cancelScan() },
-                        flaggedCounts = state.flaggedCounts,
-                    )
+                            },
+                            onTurnOnAudio = {
+                                when (val action = audioScanRequest(sdk, access)) {
+                                    is AudioScanRequest.AskPermission -> {
+                                        viewModel.setAudioScanningEnabled(true)
+                                        launch(action.permissions)
+                                    }
+                                    AudioScanRequest.AlreadyAllowed -> {
+                                        viewModel.setAudioScanningEnabled(true)
+                                        viewModel.refresh(reader.snapshot())
+                                    }
+                                    AudioScanRequest.OpenSettings -> activity?.openAppSettings()
+                                    AudioScanRequest.NeedPhotoAccessFirst -> Unit
+                                }
+                            },
+                            onOpenSettings = { activity?.openAppSettings() },
+                            onRetry = { viewModel.refresh(reader.snapshot()) },
+                            scan = state.scan,
+                            workActive = state.scanWorkActive,
+                            onStartScan = { viewModel.startScan() },
+                            onCancelScan = { viewModel.cancelScan() },
+                            flaggedCounts = state.flaggedCounts,
+                            onOpenReview = { category -> reviewCategoryName = category.name },
+                        )
+                    }
                 }
             }
         }

@@ -63,6 +63,7 @@ fun HomeScreen(
     onStartScan: () -> Unit,
     onCancelScan: () -> Unit,
     flaggedCounts: CategoryCounts = emptyCategoryCounts(),
+    onOpenReview: (ScanCategory) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -111,6 +112,7 @@ fun HomeScreen(
             flaggedCounts = flaggedCounts,
             onStartScan = onStartScan,
             onCancelScan = onCancelScan,
+            onOpenReview = onOpenReview,
         )
         Spacer(Modifier.height(16.dp))
         CountCards(
@@ -151,6 +153,7 @@ private fun ScanCard(
     flaggedCounts: CategoryCounts,
     onStartScan: () -> Unit,
     onCancelScan: () -> Unit,
+    onOpenReview: (ScanCategory) -> Unit,
 ) {
     val canScan = access.images.canRead || access.videos.canRead || (access.audio.canRead && audioScanningEnabled)
     val running = scanAppearsRunning(scan.phase, workActive)
@@ -194,7 +197,7 @@ private fun ScanCard(
                 }
             }
             if (scan.phase != ScanPhase.Idle || flaggedCounts.flagged > 0) {
-                FlaggedCounts(flaggedCounts)
+                FlaggedCounts(flaggedCounts, onOpenReview)
             }
             Spacer(Modifier.height(12.dp))
             if (running) {
@@ -233,7 +236,10 @@ private val flaggedOrder: List<ScanCategory> = listOf(
 )
 
 @Composable
-private fun FlaggedCounts(counts: CategoryCounts) {
+private fun FlaggedCounts(
+    counts: CategoryCounts,
+    onOpenReview: (ScanCategory) -> Unit,
+) {
     Spacer(Modifier.height(12.dp))
     Text(
         text = stringResource(R.string.flagged_title),
@@ -241,15 +247,21 @@ private fun FlaggedCounts(counts: CategoryCounts) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     flaggedOrder.forEach { category ->
+        val count = counts[category]
         Text(
             text = stringResource(
                 R.string.flagged_count,
                 stringResource(categoryLabel(category)),
-                counts[category],
+                count,
             ),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(top = 4.dp),
         )
+        if (count > 0) {
+            TextButton(onClick = { onOpenReview(category) }) {
+                Text(stringResource(R.string.review_open, stringResource(categoryLabel(category))))
+            }
+        }
     }
 }
 

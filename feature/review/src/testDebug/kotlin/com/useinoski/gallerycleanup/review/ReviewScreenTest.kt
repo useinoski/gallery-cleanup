@@ -1,0 +1,197 @@
+package com.useinoski.gallerycleanup.review
+
+import android.graphics.Bitmap
+import android.graphics.Color
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.performClick
+import com.useinoski.gallerycleanup.data.ScanCategory
+import com.useinoski.gallerycleanup.model.MediaType
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * Debug unit tests, same place as the app's Compose tests. The Compose host
+ * activity comes from the debug test manifest, so a release unit test cannot
+ * launch it.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class ReviewScreenTest {
+    @get:Rule
+    val compose = createComposeRule()
+
+    private lateinit var bitmap: Bitmap
+
+    @Before
+    fun setUp() {
+        bitmap = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.RED)
+        }
+    }
+
+    @Test
+    fun sensitiveItemsAreBlurredAndPlainItemsAreNot() {
+        show(
+            category = ScanCategory.Screenshot,
+            items = listOf(
+                item(id = 1, uri = "content://sensitive", sensitive = true),
+                item(id = 2, uri = "content://plain", sensitive = false),
+            ),
+            sdkInt = 34,
+        )
+        compose.onNodeWithTag("review-item-Image-1").assert(privacy(ThumbnailPrivacy.Blurred))
+        compose.onNodeWithTag("review-item-Image-2").assert(privacy(ThumbnailPrivacy.Clear))
+        compose.onNodeWithText("Screenshots · 2").assertIsDisplayed()
+    }
+
+    @Test
+    fun sensitiveItemsOnApi30UseTheObscuredFallback() {
+        show(
+            category = ScanCategory.Sensitive,
+            items = listOf(
+                item(id = 1, uri = "content://sensitive", sensitive = true),
+                item(id = 2, uri = "content://plain", sensitive = false),
+            ),
+            sdkInt = 30,
+        )
+        compose.onNodeWithTag("review-item-Image-1").assert(privacy(ThumbnailPrivacy.Obscured))
+        compose.onNodeWithTag("review-item-Image-2").assert(privacy(ThumbnailPrivacy.Clear))
+    }
+
+    @Test
+    fun aSensitiveItemWithNoThumbnailStaysAPlaceholder() {
+        show(
+            category = ScanCategory.Sensitive,
+            items = listOf(item(id = 4, uri = "content://missing", sensitive = true)),
+            sdkInt = 34,
+            loader = ThumbnailLoader { _, _ -> null },
+        )
+        compose.onNodeWithTag("review-item-Image-4").assert(privacy(ThumbnailPrivacy.Hidden))
+        compose.onNodeWithContentDescription("Hidden photo").assertIsDisplayed()
+    }
+
+    @Test
+    fun revealingASensitivePhotoClearsTheBlurUntilTheScreenIsOpenedAgain() {
+        val sensitive = item(id = 7, uri = "content://sensitive", sensitive = true)
+        val shown = mutableStateOf(true)
+        compose.setContent {
+            if (shown.value) {
+                MaterialTheme {
+                    ReviewScreen(
+                        category = ScanCategory.Sensitive.toReviewCategory(),
+                        state = ReviewUiState.Items(listOf(sensitive)),
+                        onBack = {},
+                        thumbnails = ThumbnailLoader { _, _ -> bitmap },
+                        sdkInt = 34,
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("review-item-Image-7").assert(privacy(ThumbnailPrivacy.Blurred))
+        compose.onNodeWithTag("review-item-Image-7").performClick()
+        compose.onNodeWithTag("review-item-Image-7").assert(privacy(ThumbnailPrivacy.Clear))
+        // Leaving the composition drops the reveal set. It is not saved.
+        shown.value = false
+        compose.waitForIdle()
+        shown.value = true
+        compose.onNodeWithTag("review-item-Image-7").assert(privacy(ThumbnailPrivacy.Blurred))
+    }
+
+    @Test
+    fun anEmptyCategoryShowsZeroAndBackLeaves() {
+        var left = false
+        compose.setContent {
+            MaterialTheme {
+                ReviewScreen(
+                    category = ScanCategory.People.toReviewCategory(),
+                    state = ReviewUiState.Empty,
+                    onBack = { left = true },
+                    thumbnails = ThumbnailLoader { _, _ -> bitmap },
+                )
+            }
+        }
+        compose.onNodeWithText("People · 0").assertIsDisplayed()
+        compose.onNodeWithText("Nothing waiting in this category.").assertIsDisplayed()
+        compose.onAllNodesWithTag("review-item-Image-1").assertCountEquals(0)
+        compose.onNodeWithText("Back").performClick()
+        assertTrue(left)
+    }
+
+    @Test
+    fun loadingHasNoCountYet() {
+        compose.setContent {
+            MaterialTheme {
+                ReviewScreen(
+                    category = ScanCategory.Sensitive.toReviewCategory(),
+                    state = ReviewUiState.Loading,
+                    onBack = {},
+                    thumbnails = ThumbnailLoader { _, _ -> bitmap },
+                )
+            }
+        }
+        compose.onNodeWithText("Nudity").assertIsDisplayed()
+        compose.onNodeWithText("Loading…").assertIsDisplayed()
+        compose.onAllNodesWithText("Nudity · 0").assertCountEquals(0)
+    }
+
+    @Test
+    fun pixelateReplacesASingleBrightPixelWithABlock() {
+        val source = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
+        source.eraseColor(Color.BLACK)
+        source.setPixel(0, 0, Color.WHITE)
+        val obscured = pixelate(source, cells = 4)
+        var light = 0
+        for (y in 0 until obscured.height) {
+            for (x in 0 until obscured.width) {
+                if (obscured.getPixel(x, y) != Color.BLACK) light += 1
+            }
+        }
+        assertTrue("a single white pixel should spread into a block, was $light", light > 1)
+        assertTrue(obscured.width >= source.width)
+        assertTrue(obscured.height >= source.height)
+    }
+
+    private fun show(
+        category: ScanCategory,
+        items: List<ReviewItem>,
+        sdkInt: Int,
+        loader: ThumbnailLoader = ThumbnailLoader { _, _ -> bitmap },
+    ) {
+        compose.setContent {
+            MaterialTheme {
+                ReviewScreen(
+                    category = category.toReviewCategory(),
+                    state = ReviewUiState.Items(items),
+                    onBack = {},
+                    thumbnails = loader,
+                    sdkInt = sdkInt,
+                )
+            }
+        }
+    }
+
+    private fun item(id: Long, uri: String, sensitive: Boolean) = ReviewItem(
+        id = id,
+        mediaType = MediaType.Image,
+        contentUri = uri,
+        sensitive = sensitive,
+    )
+
+    private fun privacy(expected: ThumbnailPrivacy) = SemanticsMatcher.expectValue(ThumbnailPrivacyKey, expected)
+}

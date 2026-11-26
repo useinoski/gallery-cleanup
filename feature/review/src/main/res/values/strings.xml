@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="review_back">Back</string>
+    <string name="review_title_count">%1$s · %2$,d</string>
+    <string name="review_empty">Nothing waiting in this category.</string>
+    <string name="review_loading">Loading…</string>
+    <string name="review_photo">Photo</string>
+    <string name="review_hidden_photo">Hidden photo</string>
+    <string name="review_show">Show this photo</string>
+    <string name="review_hide">Hide this photo</string>
+
+    <string name="review_category_nudity">Nudity</string>
+    <string name="review_category_suggestive">Suggestive</string>
+    <string name="review_category_alcohol_gambling">Alcohol / gambling</string>
+    <string name="review_category_people">People</string>
+    <string name="review_category_screenshots">Screenshots</string>
+    <string name="review_category_videos">Videos</string>
+    <string name="review_category_audio">Audio</string>
+    <string name="review_category_unflagged">Unflagged</string>
+</resources>
