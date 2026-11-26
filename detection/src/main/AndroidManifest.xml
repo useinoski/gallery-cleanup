@@ -11,4 +11,36 @@
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
+
+    <application>
+        <!-- Discovery is how MetadataBackendRegistry finds the CCT backend.
+             Without this service, DefaultScheduler drops the event and never
+             schedules. Older releases declared the same class as a provider. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="remove" />
+        <provider
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="remove" />
+        <!-- JobInfoScheduler.schedule calls JobScheduler.schedule and does not
+             catch. TransportRuntime's constructor runs WorkInitializer, which
+             reschedules every persisted transport context with no backend
+             check, so removing this service can throw IllegalArgumentException
+             ("No such service ComponentInfo") even with discovery gone.
+             AlarmManagerScheduler is not restored: SchedulingModule only
+             constructs it when SDK_INT is below 21, and minSdk is 30. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <receiver
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
+            tools:node="remove" />
+
+        <!-- Play Services error-resolution UI. The bundled face module is in
+             the APK, so nothing here downloads a model. -->
+        <activity
+            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+            tools:node="remove" />
+    </application>
 </manifest>

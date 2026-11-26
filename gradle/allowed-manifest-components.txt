@@ -1,0 +1,4 @@
+# Components that may remain in the merged manifest.
+# JobInfoScheduler.schedule does not catch JobScheduler.schedule, and
+# WorkInitializer reaches it for any persisted transport context.
+com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService

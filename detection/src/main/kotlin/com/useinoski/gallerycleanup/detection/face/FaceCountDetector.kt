@@ -92,7 +92,9 @@ class FaceCountDetector(
             .setMinFaceSize(minFaceSize)
             .build()
         // getClient() with no options would enable defaults that include more work.
-        // The bundled artifact supplies the model. We do not call a download API.
+        // The types live in the play-services-mlkit-face-detection client, which
+        // the bundled POM requires. The model bytes are in com.google.mlkit:face-detection.
+        // getClient() loads that local module. We do not call a download API.
         return FaceDetection.getClient(options).also { created ->
             client = created
         }

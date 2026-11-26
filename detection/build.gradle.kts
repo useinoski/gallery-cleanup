@@ -26,12 +26,17 @@ dependencies {
 
     // Bundled ML Kit only. Do not add com.google.android.gms:play-services-mlkit-*.
     // Those artifacts download a model over the network. face-detection's POM
-    // does pull the thin play-services-mlkit-face-detection client; the model
-    // bytes themselves are inside the com.google.mlkit artifact.
+    // does pull the thin play-services-mlkit-face-detection client. The model
+    // bytes are in this artifact (assets/models_bundled). The client cannot be
+    // excluded: FaceDetection, FaceDetector, and FaceDetectorOptions are
+    // compiled into that AAR, and :detection:compileDebugKotlin fails with
+    // "Unresolved reference 'FaceDetection'" without it. The client loads the
+    // local dynamite module (MODULE_VERSION 10000) instead of downloading.
     implementation(libs.mlkit.face.detection)
     implementation(libs.mlkit.image.labeling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)

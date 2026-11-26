@@ -14,8 +14,9 @@ import org.tensorflow.lite.nnapi.NnApiDelegate
  *
  * Construction order is GPU, then NNAPI, then CPU. A delegate that fails to
  * load, or whose first run throws, is closed and the next one is tried. The
- * CPU interpreter turns XNNPACK on. The interpreter object is not safe to
- * share across threads; [MarqoNsfwDetector] holds a lock around [run].
+ * CPU interpreter turns XNNPACK on. The GPU delegate has to be created, used,
+ * and closed on one thread. [MarqoNsfwDetector] does that with
+ * [InterpreterSingleThread]; this class does not hop threads itself.
  *
  * GPU options allow the int8 weights. The input tensor is still float32 NCHW,
  * which many GPU drivers reject. That rejection is a fallback, not a crash.

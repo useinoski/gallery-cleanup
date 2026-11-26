@@ -55,5 +55,10 @@ class DetectionContractTest {
         assertTrue(catalogCode.contains("mlkitFace = \"16.1.7\""))
         assertTrue(catalogCode.contains("mlkitImageLabeling = \"17.0.9\""))
         assertTrue(catalogCode.contains("litert = \"1.4.2\""))
+        val face = File("src/main/kotlin/com/useinoski/gallerycleanup/detection/face/FaceCountDetector.kt").readText()
+        assertTrue(face.contains("com.google.mlkit.vision.face.FaceDetection"))
+        assertTrue(face.contains("FaceDetection.getClient"))
+        assertFalse(face.contains("requestDownload"))
+        assertFalse(face.contains("DownloadConditions"))
     }
 }
