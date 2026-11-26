@@ -11,4 +11,28 @@
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />
+
+    <application>
+        <!-- datatransport rides in with bundled ML Kit for telemetry upload.
+             The models are already in the APK. transport-runtime 2.2.6 declares
+             TransportBackendDiscovery as a service; older releases used a provider. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="remove" />
+        <provider
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="remove" />
+        <service
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+            tools:node="remove" />
+        <receiver
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
+            tools:node="remove" />
+
+        <!-- Play Services error-resolution UI. The bundled face module is in
+             the APK, so nothing here downloads a model. -->
+        <activity
+            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+            tools:node="remove" />
+    </application>
 </manifest>

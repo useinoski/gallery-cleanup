@@ -1,0 +1,9 @@
+# Component class names that must not survive the manifest merge.
+# The app manifest removes each of these with tools:node="remove".
+# :app:checkDebugMergedManifest fails if any of them still appear.
+# A component whose name contains "datatransport" or "play-services-mlkit"
+# fails the same check even when it is not listed here.
+com.google.android.datatransport.runtime.backends.TransportBackendDiscovery
+com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService
+com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver
+com.google.android.gms.common.api.GoogleApiActivity

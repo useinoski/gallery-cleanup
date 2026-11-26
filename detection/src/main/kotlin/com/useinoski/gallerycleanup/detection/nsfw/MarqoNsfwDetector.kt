@@ -7,8 +7,6 @@ import com.useinoski.gallerycleanup.detection.DetectionResult
 import com.useinoski.gallerycleanup.detection.MediaDetector
 import com.useinoski.gallerycleanup.detection.image.requireUsableBitmap
 import com.useinoski.gallerycleanup.detection.image.scaleCenterSquare
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Marqo `nsfw-image-detection-384`, int8 LiteRT conversion, on the phone.
@@ -21,33 +19,42 @@ import kotlinx.coroutines.withContext
  * first, then NNAPI, then a CPU interpreter with XNNPACK. [backendName] reports
  * which one actually ran. That name is not part of [modelVersion]: two phones
  * may pick different delegates, and a review is about the model, not the chip.
+ *
+ * Creation, [NsfwInterpreter.run], and [close] all run on one thread owned by
+ * this detector. The LiteRT GPU delegate is not safe to create on one thread
+ * and use or close on another. A shared dispatcher such as `Dispatchers.Default`
+ * can hop threads between calls.
  */
 class MarqoNsfwDetector(
     context: Context,
-    private val cpuThreads: Int = defaultCpuThreads(),
-    private val allowGpu: Boolean = true,
-    private val allowNnapi: Boolean = true,
+    cpuThreads: Int = defaultCpuThreads(),
+    allowGpu: Boolean = true,
+    allowNnapi: Boolean = true,
 ) : MediaDetector, AutoCloseable {
     private val appContext = context.applicationContext
-    private val lock = Any()
-    private var runtime: NsfwInterpreter? = null
-    private var closed = false
+    private val session = InterpreterSingleThread {
+        NsfwInterpreter(
+            modelBuffer = loadModelBuffer(appContext, NsfwVersions.ASSET_NAME),
+            cpuThreads = cpuThreads,
+            allowGpu = allowGpu,
+            allowNnapi = allowNnapi,
+        )
+    }
 
     override val id: String = NsfwVersions.ID
     override val modelVersion: String = NsfwVersions.MODEL_VERSION
     override val inputSizePx: Int = NsfwMath.INPUT_SIZE
 
     val backendName: String
-        get() = runtime?.backendName ?: "not-loaded"
+        get() = session.current?.backendName ?: "not-loaded"
 
-    override suspend fun classify(input: Bitmap): DetectionResult = withContext(Dispatchers.Default) {
-        checkOffMainThread()
-        val logits = synchronized(lock) {
-            check(!closed) { "detector is closed" }
+    override suspend fun classify(input: Bitmap): DetectionResult {
+        val logits = session.use { runtime ->
+            checkOffMainThread()
             val nchw = preprocess(input)
-            runtime().run(nchw)
+            runtime.run(nchw)
         }
-        DetectionResult(
+        return DetectionResult(
             scores = NsfwMath.scores(logits),
             detectorId = id,
             modelVersion = modelVersion,
@@ -55,23 +62,7 @@ class MarqoNsfwDetector(
     }
 
     override fun close() {
-        synchronized(lock) {
-            if (closed) return
-            closed = true
-            runtime?.close()
-            runtime = null
-        }
-    }
-
-    private fun runtime(): NsfwInterpreter {
-        runtime?.let { return it }
-        val buffer = loadModelBuffer(appContext, NsfwVersions.ASSET_NAME)
-        return NsfwInterpreter(
-            modelBuffer = buffer,
-            cpuThreads = cpuThreads,
-            allowGpu = allowGpu,
-            allowNnapi = allowNnapi,
-        ).also { runtime = it }
+        session.close()
     }
 
     private fun preprocess(input: Bitmap): FloatArray {
