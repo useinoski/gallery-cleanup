@@ -50,7 +50,7 @@ class LibraryScanWorker internal constructor(
     ) : this(
         context,
         params,
-        LibraryScan(scanner),
+        LibraryScan { LibraryScan.Pass(scanner) },
     )
 
     override suspend fun doWork(): Result {

@@ -42,10 +42,10 @@ class PendingRescanTest {
             resolvePresent = { keys -> keys.mapNotNull { key -> scanStore.storedItem(key) } },
             observer = observer,
         )
-        val scan = LibraryScan(
-            scanner = testScanner(library, scanStore, observer, generation = 4),
-            afterPass = { rescan.afterPass() },
-        )
+        val scanner = testScanner(library, scanStore, observer, generation = 4)
+        val scan = LibraryScan {
+            LibraryScan.Pass(scanner = scanner, afterPass = { rescan.afterPass() })
+        }
 
         scan.run()
         assertEquals(listOf(1L), imageCalls)

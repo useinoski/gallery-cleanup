@@ -239,11 +239,12 @@ internal fun testScanner(
     readable: suspend () -> ReadableMedia = { ReadableMedia(images = true, videos = false, audio = false) },
     batchSize: Int = 10,
     generation: Long = 4,
+    version: String = "v1",
 ) = LibraryScanner(
     repository = library,
     store = store,
     readable = readable,
-    stamps = VolumeStamps { VolumeStamp(version = "v1", generation = generation, generationUsable = true) },
+    stamps = VolumeStamps { VolumeStamp(version = version, generation = generation, generationUsable = true) },
     observer = observer,
     batchSize = batchSize,
 )

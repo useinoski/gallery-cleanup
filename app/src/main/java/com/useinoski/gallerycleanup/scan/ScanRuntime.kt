@@ -22,11 +22,14 @@ import com.useinoski.gallerycleanup.prefs.GalleryPreferences
  * screen does not read. Do not add a second store next to it. The database
  * survives process death, which is what a later start resumes from.
  *
- * The image classifier is one per scan, not one per process. It stays loaded
- * across the batches of that scan. [LibraryScan] closes it when the scan
- * ends, fails, or is cancelled, which is what releases the detector threads.
- * The next scan builds another one. It is created on the first scan, not
- * when the home screen opens, so a launch that never scans does not load it.
+ * The image classifier is not cached. [open] returns a [LibraryScan] whose
+ * [ScanPassFactory] builds a new [OnDeviceImageClassifier] at the start of
+ * every pass, and [LibraryScan] closes it when that pass ends, fails, or is
+ * cancelled.
+ * A closed Marqo detector throws if it is used again, so the next pass must
+ * not keep the previous instance. The model stays loaded across the batches
+ * of the one pass. It is created when the pass starts, not when the home
+ * screen opens, so a launch that never scans does not load it.
  */
 internal object ScanRuntime {
     private val gate = Any()
@@ -40,6 +43,10 @@ internal object ScanRuntime {
 
     fun open(context: Context): LibraryScan {
         val appContext = context.applicationContext
+        return LibraryScan { openPass(appContext) }
+    }
+
+    private fun openPass(appContext: Context): LibraryScan.Pass {
         val results = store(appContext)
         val records = RoomAnalysisRecords(results)
         val classifier = OnDeviceImageClassifier(appContext)
@@ -75,7 +82,7 @@ internal object ScanRuntime {
                 resolvePresent = results::presentItems,
                 observer = observer,
             )
-            return LibraryScan(
+            return LibraryScan.Pass(
                 scanner = scanner,
                 detectors = classifier,
                 afterPass = rescan::afterPass,

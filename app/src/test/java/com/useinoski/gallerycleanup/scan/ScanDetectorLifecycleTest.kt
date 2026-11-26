@@ -37,11 +37,14 @@ class ScanDetectorLifecycleTest {
         val detector = FakeDetector()
         val store = InMemoryScanStore()
         var rescanSawOpenDetector = false
-        val scan = LibraryScan(
-            scanner = testScanner(ScanMemoryLibrary(listOf(scannedRow(1, generation = 4))), store, generation = 4),
-            detectors = detector,
-            afterPass = { rescanSawOpenDetector = detector.closeCount == 0 },
-        )
+        val scanner = testScanner(ScanMemoryLibrary(listOf(scannedRow(1, generation = 4))), store, generation = 4)
+        val scan = LibraryScan {
+            LibraryScan.Pass(
+                scanner = scanner,
+                detectors = detector,
+                afterPass = { rescanSawOpenDetector = detector.closeCount == 0 },
+            )
+        }
 
         assertEquals(Result.success(), worker(scan).doWork())
 
@@ -55,11 +58,14 @@ class ScanDetectorLifecycleTest {
         val detector = FakeDetector()
         val store = InMemoryScanStore()
         var afterPassRan = false
-        val scan = LibraryScan(
-            scanner = testScanner(ThrowingScanLibrary(IllegalStateException("detector failed")), store),
-            detectors = detector,
-            afterPass = { afterPassRan = true },
-        )
+        val scanner = testScanner(ThrowingScanLibrary(IllegalStateException("detector failed")), store)
+        val scan = LibraryScan {
+            LibraryScan.Pass(
+                scanner = scanner,
+                detectors = detector,
+                afterPass = { afterPassRan = true },
+            )
+        }
 
         assertEquals(Result.failure(), worker(scan).doWork())
 
@@ -72,11 +78,14 @@ class ScanDetectorLifecycleTest {
     fun closeRunsWhenTheScanIsCancelled() = runTest {
         val detector = FakeDetector()
         val store = InMemoryScanStore()
-        val scan = LibraryScan(
-            scanner = testScanner(ThrowingScanLibrary(CancellationException("stop")), store),
-            detectors = detector,
-            afterPass = { error("rescan must not run after cancel") },
-        )
+        val scanner = testScanner(ThrowingScanLibrary(CancellationException("stop")), store)
+        val scan = LibraryScan {
+            LibraryScan.Pass(
+                scanner = scanner,
+                detectors = detector,
+                afterPass = { error("rescan must not run after cancel") },
+            )
+        }
         val error = async {
             try {
                 worker(scan).doWork()
