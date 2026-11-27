@@ -2,6 +2,7 @@ package com.useinoski.gallerycleanup.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -53,6 +54,10 @@ class CategoryRuleTest {
         assertEquals("audio/ogg", item.mimeType)
         assertEquals(1_700_000_000_000L, item.dateTakenMillis)
         assertEquals(1_700_000_000L, item.dateAdded)
+        assertNull(item.dateModified)
+        val stamped = item.copy(dateModified = 1_700_000_100L)
+        assertNull(item.dateModified)
+        assertEquals(1_700_000_100L, stamped.dateModified)
         assertEquals(12_000L, item.durationMillis)
         assertEquals(4_096L, item.size)
     }

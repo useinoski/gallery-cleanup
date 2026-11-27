@@ -15,12 +15,14 @@ package com.useinoski.gallerycleanup.model
  * bucket stored in `:core:data`. Several rules may match one file. The
  * caller unions the sets. This interface does not rank them.
  *
- * An implementation is pure. The same [MediaItemMetadata] returns the same
- * set. It does not read a clock, the network, or MediaStore, and it does not
- * delete or modify the file. The fields on [MediaItemMetadata] are the only
- * input.
+ * An implementation is pure. The same [MediaItemMetadata] and the same
+ * caller-supplied clock return the same set. It does not read the system
+ * clock, the network, or MediaStore, and it does not delete or modify the
+ * file. A date rule may take a `java.time.Clock` from the caller so a test
+ * can pin the day. Every other input is a field on [MediaItemMetadata].
  *
- * No implementation ships with this type.
+ * The folder rules and the date rule live in `:core:media`. This type stays
+ * the contract. The scanner does not call them yet.
  */
 interface CategoryRule {
     fun categorize(item: MediaItemMetadata): Set<MediaCategory>
