@@ -9,6 +9,16 @@
     <string name="review_hidden_photo">Hidden photo</string>
     <string name="review_show">Show this photo</string>
     <string name="review_hide">Hide this photo</string>
+    <string name="review_select">Select</string>
+    <string name="review_deselect">Deselect</string>
+    <string name="review_selected">%1$,d selected</string>
+    <string name="review_select_all">Select all</string>
+    <string name="review_clear">Clear</string>
+    <string name="review_keep">Keep</string>
+    <string name="review_kept">%1$,d kept</string>
+    <string name="review_undo">Undo</string>
+    <string name="review_keep_failed">Couldn\'t keep items. Try again.</string>
+    <string name="review_undo_failed">Couldn\'t undo.</string>
 
     <string name="review_category_nudity">Nudity</string>
     <string name="review_category_suggestive">Suggestive</string>

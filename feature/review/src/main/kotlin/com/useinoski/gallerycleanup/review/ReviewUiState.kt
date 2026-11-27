@@ -47,6 +47,10 @@ internal val ReviewItem.stableKey: String
 internal val ReviewItem.testTag: String
     get() = "review-item-${mediaType.name}-$id"
 
+/** The check drawn on top of a selected cell. Not the photo. */
+internal val ReviewItem.checkTag: String
+    get() = "review-check-${mediaType.name}-$id"
+
 /**
  * Turns one emission into the grid.
  *

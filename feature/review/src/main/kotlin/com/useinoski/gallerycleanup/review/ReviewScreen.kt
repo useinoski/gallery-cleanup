@@ -5,20 +5,27 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +45,12 @@ import androidx.compose.ui.unit.dp
  * `remember`, not `rememberSaveable`, so it is dropped when the user leaves
  * the screen. A revealed sensitive photo is hidden again on the next visit.
  * Rotation also drops it, which keeps a revealed photo from staying on screen.
+ * Selection is the opposite: the ViewModel stores it in a [androidx.lifecycle.SavedStateHandle],
+ * which is the ViewModel form of `rememberSaveable`.
+ *
+ * A long-press starts selection. While [selectedKeys] is not empty, a tap
+ * toggles the cell instead of revealing it. A selected sensitive cell is
+ * drawn blurred even if it was revealed a moment ago.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,29 +60,55 @@ internal fun ReviewScreen(
     onBack: () -> Unit,
     thumbnails: ThumbnailLoader,
     sdkInt: Int = Build.VERSION.SDK_INT,
+    selectedKeys: Set<String> = emptySet(),
+    onStartSelection: (ReviewItem) -> Unit = {},
+    onToggleSelection: (ReviewItem) -> Unit = {},
+    onSelectAll: () -> Unit = {},
+    onClearSelection: () -> Unit = {},
+    onKeep: () -> Unit = {},
+    keepNotice: ReviewNotice? = null,
+    onUndoKeep: () -> Unit = {},
+    onDismissKeepNotice: () -> Unit = {},
 ) {
     // remember(category) resets the set when the user opens a different
     // category without this composable leaving the tree. Leaving the tree
     // drops it either way. The set is not saved.
     var revealed by remember(category.source) { mutableStateOf(emptySet<String>()) }
+    val selecting = selectedKeys.isNotEmpty()
     val name = stringResource(category.titleRes)
-    val title = when (state) {
-        ReviewUiState.Loading -> name
-        ReviewUiState.Empty -> stringResource(R.string.review_title_count, name, 0)
-        is ReviewUiState.Items -> stringResource(R.string.review_title_count, name, state.items.size)
+    val title = if (selecting) {
+        stringResource(R.string.review_selected, selectedKeys.size)
+    } else {
+        when (state) {
+            ReviewUiState.Loading -> name
+            ReviewUiState.Empty -> stringResource(R.string.review_title_count, name, 0)
+            is ReviewUiState.Items -> stringResource(R.string.review_title_count, name, state.items.size)
+        }
     }
+    val snackbarHostState = remember { SnackbarHostState() }
+    KeepSnackbar(keepNotice, snackbarHostState, onUndoKeep, onDismissKeepNotice)
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(text = title, modifier = Modifier.semantics { heading() })
-                },
-                navigationIcon = {
-                    TextButton(onClick = onBack) {
-                        Text(stringResource(R.string.review_back))
-                    }
-                },
-            )
+            Column {
+                TopAppBar(
+                    title = {
+                        Text(text = title, modifier = Modifier.semantics { heading() })
+                    },
+                    navigationIcon = {
+                        TextButton(onClick = onBack) {
+                            Text(stringResource(R.string.review_back))
+                        }
+                    },
+                )
+                if (selecting) {
+                    SelectionActions(
+                        onSelectAll = onSelectAll,
+                        onClearSelection = onClearSelection,
+                        onKeep = onKeep,
+                    )
+                }
+            }
         },
     ) { padding ->
         when (state) {
@@ -102,9 +141,12 @@ internal fun ReviewScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(items = state.items, key = { item -> item.stableKey }) { item ->
+                    val selected = item.stableKey in selectedKeys
                     ReviewThumbnail(
                         item = item,
-                        revealed = item.stableKey in revealed,
+                        revealed = item.stableKey in revealed && !selected,
+                        selected = selected,
+                        selectionMode = selecting,
                         loader = thumbnails,
                         sdkInt = sdkInt,
                         onToggleReveal = {
@@ -114,9 +156,73 @@ internal fun ReviewScreen(
                                 revealed + item.stableKey
                             }
                         },
+                        onToggleSelection = { onToggleSelection(item) },
+                        onStartSelection = { onStartSelection(item) },
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SelectionActions(
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
+    onKeep: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        TextButton(onClick = onSelectAll) {
+            Text(stringResource(R.string.review_select_all))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onClearSelection) {
+                Text(stringResource(R.string.review_clear))
+            }
+            Button(onClick = onKeep) {
+                Text(stringResource(R.string.review_keep))
+            }
+        }
+    }
+}
+
+/**
+ * Shows "N kept" until the user taps Undo or swipes the bar away.
+ * A database error shows the failure text and no Undo action.
+ *
+ * [SnackbarDuration.Indefinite] has no timer. A short bar is easy to miss
+ * after a bulk keep, and Undo would be gone with it. A new [notice] replaces
+ * the previous one because [LaunchedEffect] restarts when the key changes.
+ * That is why Undo covers only the latest Keep. Restarting cancels
+ * [SnackbarHostState.showSnackbar]; that cancellation is not an Undo and
+ * not a dismiss. An error uses [SnackbarDuration.Long] so it leaves on its own.
+ */
+@Composable
+private fun KeepSnackbar(
+    notice: ReviewNotice?,
+    hostState: SnackbarHostState,
+    onUndoKeep: () -> Unit,
+    onDismissKeepNotice: () -> Unit,
+) {
+    val message = when (notice) {
+        is ReviewNotice.Kept -> stringResource(R.string.review_kept, notice.count)
+        ReviewNotice.KeepFailed -> stringResource(R.string.review_keep_failed)
+        ReviewNotice.UndoFailed -> stringResource(R.string.review_undo_failed)
+        null -> null
+    }
+    val undo = stringResource(R.string.review_undo)
+    val offerUndo = notice is ReviewNotice.Kept
+    LaunchedEffect(notice) {
+        val text = message ?: return@LaunchedEffect
+        val result = hostState.showSnackbar(
+            message = text,
+            actionLabel = if (offerUndo) undo else null,
+            duration = if (offerUndo) SnackbarDuration.Indefinite else SnackbarDuration.Long,
+        )
+        if (result == SnackbarResult.ActionPerformed) onUndoKeep() else onDismissKeepNotice()
     }
 }

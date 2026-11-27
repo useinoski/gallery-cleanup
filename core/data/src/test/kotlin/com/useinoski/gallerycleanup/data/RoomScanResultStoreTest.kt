@@ -154,6 +154,43 @@ class RoomScanResultStoreTest {
     }
 
     @Test
+    fun aLaterUpsertOfAKeptRowStaysKeptAndOutOfObservePending() = runBlocking {
+        val original = sample(
+            id = 21,
+            category = ScanCategory.Screenshot,
+            confidence = 0.4f,
+            modelVersion = "screenshot-rules-1",
+        )
+        store.upsert(listOf(original))
+        store.markKept(listOf(original.key))
+        assertTrue(store.observePending(ScanCategory.Screenshot).first().isEmpty())
+
+        store.upsert(
+            listOf(
+                original.copy(
+                    reviewStatus = ReviewStatus.Pending,
+                    modelVersion = "screenshot-rules-2",
+                    confidence = 0.2f,
+                    scannedAtEpochMillis = 2_000,
+                ),
+            ),
+        )
+
+        val stored = dao.find(21, MediaType.Image)
+        assertEquals(ReviewStatus.Kept, stored!!.reviewStatus)
+        assertEquals("screenshot-rules-2", stored.modelVersion)
+        assertEquals(0.2f, stored.confidence, 0.0001f)
+        assertTrue(store.observePending(ScanCategory.Screenshot).first().isEmpty())
+        assertFalse(store.keysNeedingRescan(setOf("screenshot-rules-2")).contains(original.key))
+        assertFalse(store.keysNeedingRescan(setOf("screenshot-rules-1")).contains(original.key))
+        assertEquals(setOf(original.key), store.keptKeys())
+
+        store.markPending(listOf(original.key))
+        assertEquals(original.key, store.observePending(ScanCategory.Screenshot).first().single().key)
+        assertTrue(store.keptKeys().isEmpty())
+    }
+
+    @Test
     fun resetReviewedMakesKeptItemsPendingAndWritableAgain() = runBlocking {
         val kept = sample(id = 2, category = ScanCategory.Audio, type = MediaType.Audio)
         val trashed = sample(id = 3, category = ScanCategory.Video, type = MediaType.Video)

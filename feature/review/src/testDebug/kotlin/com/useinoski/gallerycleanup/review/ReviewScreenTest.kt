@@ -1,25 +1,37 @@
 package com.useinoski.gallerycleanup.review
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.view.Window
+import android.view.WindowManager
 import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import com.useinoski.gallerycleanup.data.ScanCategory
+import com.useinoski.gallerycleanup.model.MediaKey
 import com.useinoski.gallerycleanup.model.MediaType
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -193,6 +205,93 @@ class ReviewScreenTest {
     }
 
     @Test
+    fun longPressSelectsWithoutRevealingAndTapTogglesTheCheck() {
+        val sensitive = item(id = 7, uri = "content://sensitive", sensitive = true)
+        val selected = mutableStateOf(emptySet<String>())
+        compose.setContent {
+            MaterialTheme {
+                ReviewScreen(
+                    category = ScanCategory.Sensitive.toReviewCategory(),
+                    state = ReviewUiState.Items(listOf(sensitive)),
+                    onBack = {},
+                    thumbnails = ThumbnailLoader { _, _ -> bitmap },
+                    sdkInt = 34,
+                    selectedKeys = selected.value,
+                    onStartSelection = { cell -> selected.value = selected.value + cell.stableKey },
+                    onToggleSelection = { cell ->
+                        selected.value = if (cell.stableKey in selected.value) {
+                            selected.value - cell.stableKey
+                        } else {
+                            selected.value + cell.stableKey
+                        }
+                    },
+                )
+            }
+        }
+        compose.onNodeWithTag("review-item-Image-7").performClick()
+        compose.onNodeWithTag("review-item-Image-7").assert(privacy(ThumbnailPrivacy.Clear))
+        compose.onNodeWithTag("review-item-Image-7").performTouchInput { longClick() }
+        compose.onNodeWithTag("review-item-Image-7").assert(privacy(ThumbnailPrivacy.Blurred))
+        compose.onNodeWithTag("review-item-Image-7").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.Selected, true),
+        )
+        compose.onNodeWithTag("review-check-Image-7", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("1 selected").assertIsDisplayed()
+        compose.onNodeWithText("Select all").assertIsDisplayed()
+        compose.onNodeWithText("Clear").assertIsDisplayed()
+        compose.onNodeWithText("Keep").assertIsDisplayed()
+        compose.onNodeWithTag("review-item-Image-7").performClick()
+        compose.onAllNodesWithTag("review-check-Image-7", useUnmergedTree = true).assertCountEquals(0)
+        compose.onNodeWithTag("review-item-Image-7").assert(
+            SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected),
+        )
+        compose.onNodeWithTag("review-item-Image-7").assert(privacy(ThumbnailPrivacy.Clear))
+        compose.onNodeWithText("Nudity · 1").assertIsDisplayed()
+    }
+
+    @Test
+    fun keptSnackbarOffersUndo() {
+        var undone = false
+        compose.setContent {
+            MaterialTheme {
+                ReviewScreen(
+                    category = ScanCategory.Screenshot.toReviewCategory(),
+                    state = ReviewUiState.Empty,
+                    onBack = {},
+                    thumbnails = ThumbnailLoader { _, _ -> bitmap },
+                    keepNotice = ReviewNotice.Kept(
+                        listOf(MediaKey(MediaType.Image, 1), MediaKey(MediaType.Image, 2)),
+                    ),
+                    onUndoKeep = { undone = true },
+                )
+            }
+        }
+        compose.onNodeWithText("2 kept").assertIsDisplayed()
+        compose.onNodeWithText("Undo").performClick()
+        assertTrue(undone)
+    }
+
+    @Test
+    fun reviewRouteBlocksScreenshotsUntilItLeaves() {
+        val shown = mutableStateOf(true)
+        lateinit var window: Window
+        compose.setContent {
+            window = (LocalActivity.current ?: LocalContext.current.findActivity()).window
+            if (shown.value) {
+                ReviewRoute(
+                    category = ScanCategory.Screenshot,
+                    onBack = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(WindowManager.LayoutParams.FLAG_SECURE, window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)
+        shown.value = false
+        compose.waitForIdle()
+        assertEquals(0, window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    @Test
     fun pixelateReplacesASingleBrightPixelWithABlock() {
         val source = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
         source.eraseColor(Color.BLACK)
@@ -236,4 +335,13 @@ class ReviewScreenTest {
     )
 
     private fun privacy(expected: ThumbnailPrivacy) = SemanticsMatcher.expectValue(ThumbnailPrivacyKey, expected)
+}
+
+private fun Context.findActivity(): Activity {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    error("ReviewRoute is not hosted by an Activity")
 }

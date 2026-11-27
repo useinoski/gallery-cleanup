@@ -7,10 +7,12 @@ import android.os.Build
 import android.util.Size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,8 +35,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -185,9 +189,13 @@ private const val PIXEL_CELLS = 8
 internal fun ReviewThumbnail(
     item: ReviewItem,
     revealed: Boolean,
+    selected: Boolean,
+    selectionMode: Boolean,
     loader: ThumbnailLoader,
     sdkInt: Int,
     onToggleReveal: () -> Unit,
+    onToggleSelection: () -> Unit,
+    onStartSelection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var bitmap by remember(item.contentUri) { mutableStateOf<Bitmap?>(null) }
@@ -214,31 +222,52 @@ internal fun ReviewThumbnail(
         privacy == ThumbnailPrivacy.Clear -> stringResource(R.string.review_photo)
         else -> stringResource(R.string.review_hidden_photo)
     }
-    val click = if (item.sensitive) {
-        Modifier.clickable(
-            onClickLabel = stringResource(
-                if (revealed) R.string.review_hide else R.string.review_show,
-            ),
-            onClick = onToggleReveal,
+    val clickLabel = when {
+        selectionMode -> stringResource(
+            if (selected) R.string.review_deselect else R.string.review_select,
         )
-    } else {
-        Modifier
+        item.sensitive -> stringResource(
+            if (revealed) R.string.review_hide else R.string.review_show,
+        )
+        else -> null
     }
+    // Long-press enters selection. Tap toggles only after that. A sensitive
+    // cell that is not selected still reveals on tap. combinedClickable is
+    // one modifier for both gestures; a Java view would set OnClick and
+    // OnLongClick on the same widget.
+    val shape = RoundedCornerShape(12.dp)
     Box(
         modifier = modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(12.dp))
+            .then(
+                if (selected) {
+                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape)
+                } else {
+                    Modifier
+                },
+            )
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .testTag(item.testTag)
             .semantics {
                 thumbnailPrivacy = privacy
+                if (selectionMode) {
+                    this.selected = selected
+                }
                 // The broken-image icon carries its own description. Setting it
                 // here as well would announce the cell twice.
                 if (!unavailable) {
                     contentDescription = description
                 }
             }
-            .then(click),
+            .combinedClickable(
+                onClickLabel = clickLabel,
+                onLongClickLabel = stringResource(R.string.review_select),
+                onClick = {
+                    if (selectionMode) onToggleSelection() else if (item.sensitive) onToggleReveal()
+                },
+                onLongClick = onStartSelection,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         when (privacy) {
@@ -268,6 +297,27 @@ internal fun ReviewThumbnail(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(32.dp),
             )
+        }
+        // Drawn after the bitmap, so a blurred photo stays blurred and the
+        // check stays sharp on top of it.
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+                    .testTag(item.checkTag),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_review_check),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
         }
     }
 }
