@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import com.useinoski.gallerycleanup.data.ScanCategory
 import com.useinoski.gallerycleanup.data.ScanResult
 import com.useinoski.gallerycleanup.model.MediaKey
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,11 +35,22 @@ internal interface ReviewDecisions {
 }
 
 /**
- * The keys just marked kept. [count] is what the snackbar prints. Undo sends
- * [keys] back through [ReviewDecisions.markPending].
+ * What the snackbar is showing.
+ *
+ * [Kept] is the only case with an Undo action. [KeepFailed] and [UndoFailed]
+ * are the database-error messages. A new [Kept] replaces the previous one:
+ * Undo applies only to the latest successful Keep.
  */
-internal data class KeepNotice(val keys: List<MediaKey>) {
-    val count: Int get() = keys.size
+internal sealed interface ReviewNotice {
+    data class Kept(val keys: List<MediaKey>) : ReviewNotice {
+        val count: Int get() = keys.size
+    }
+
+    /** [ReviewDecisions.markKept] threw. The selection was not cleared. */
+    data object KeepFailed : ReviewNotice
+
+    /** [ReviewDecisions.markPending] threw. Those rows are still kept. */
+    data object UndoFailed : ReviewNotice
 }
 
 /**
@@ -90,8 +102,8 @@ internal class ReviewViewModel(
     /** Stored keys, including any the latest grid emission has not dropped yet. */
     val selection: StateFlow<Set<String>> = _selection.asStateFlow()
 
-    private val _keepNotice = MutableStateFlow<KeepNotice?>(null)
-    val keepNotice: StateFlow<KeepNotice?> = _keepNotice.asStateFlow()
+    private val _keepNotice = MutableStateFlow<ReviewNotice?>(null)
+    val keepNotice: StateFlow<ReviewNotice?> = _keepNotice.asStateFlow()
 
     private var keepInFlight = false
 
@@ -133,6 +145,10 @@ internal class ReviewViewModel(
     /**
      * Marks the visible selection kept, in one [ReviewDecisions.markKept] call.
      * The grid drops the rows when [uiState] emits the pending list without them.
+     *
+     * A successful Keep replaces the snackbar, so Undo covers only this batch
+     * and not an earlier one. A failed write leaves the selection in place and
+     * shows [ReviewNotice.KeepFailed] instead of "N kept".
      */
     fun keepSelected() {
         if (keepInFlight) return
@@ -143,19 +159,43 @@ internal class ReviewViewModel(
             try {
                 decisions.markKept(keys)
                 write(emptySet())
-                _keepNotice.value = KeepNotice(keys)
+                _keepNotice.value = ReviewNotice.Kept(keys)
+            } catch (cancelled: CancellationException) {
+                // CancellationException extends Exception. Treating it as a
+                // database failure would swallow a coroutine cancel, the same
+                // mistake as a Java catch (Exception) that also catches the
+                // interrupt used to stop a thread. Rethrow so the job stops.
+                throw cancelled
+            } catch (_: Exception) {
+                _keepNotice.value = ReviewNotice.KeepFailed
             } finally {
                 keepInFlight = false
             }
         }
     }
 
-    /** Snackbar action. Puts the last kept keys back to pending. */
+    /**
+     * Snackbar action. Puts the most recent successful Keep back to pending.
+     *
+     * Undo covers only that latest Keep. A new Keep replaces this snackbar,
+     * so the previous batch can no longer be restored from here.
+     *
+     * A failed write leaves those rows kept and shows [ReviewNotice.UndoFailed]
+     * instead of clearing the snackbar.
+     */
     fun undoKeep() {
-        val keys = _keepNotice.value?.keys ?: return
-        _keepNotice.value = null
+        val kept = _keepNotice.value as? ReviewNotice.Kept ?: return
         viewModelScope.launch {
-            decisions.markPending(keys)
+            try {
+                decisions.markPending(kept.keys)
+                if (_keepNotice.value == kept) {
+                    _keepNotice.value = null
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _keepNotice.value = ReviewNotice.UndoFailed
+            }
         }
     }
 

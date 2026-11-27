@@ -66,7 +66,7 @@ internal fun ReviewScreen(
     onSelectAll: () -> Unit = {},
     onClearSelection: () -> Unit = {},
     onKeep: () -> Unit = {},
-    keepNotice: KeepNotice? = null,
+    keepNotice: ReviewNotice? = null,
     onUndoKeep: () -> Unit = {},
     onDismissKeepNotice: () -> Unit = {},
 ) {
@@ -192,28 +192,36 @@ private fun SelectionActions(
 
 /**
  * Shows "N kept" until the user taps Undo or swipes the bar away.
+ * A database error shows the failure text and no Undo action.
  *
  * [SnackbarDuration.Indefinite] has no timer. A short bar is easy to miss
  * after a bulk keep, and Undo would be gone with it. A new [notice] replaces
  * the previous one because [LaunchedEffect] restarts when the key changes.
- * Restarting cancels [SnackbarHostState.showSnackbar]; that cancellation is
- * not an Undo and not a dismiss.
+ * That is why Undo covers only the latest Keep. Restarting cancels
+ * [SnackbarHostState.showSnackbar]; that cancellation is not an Undo and
+ * not a dismiss. An error uses [SnackbarDuration.Long] so it leaves on its own.
  */
 @Composable
 private fun KeepSnackbar(
-    notice: KeepNotice?,
+    notice: ReviewNotice?,
     hostState: SnackbarHostState,
     onUndoKeep: () -> Unit,
     onDismissKeepNotice: () -> Unit,
 ) {
-    val message = notice?.let { stringResource(R.string.review_kept, it.count) }
+    val message = when (notice) {
+        is ReviewNotice.Kept -> stringResource(R.string.review_kept, notice.count)
+        ReviewNotice.KeepFailed -> stringResource(R.string.review_keep_failed)
+        ReviewNotice.UndoFailed -> stringResource(R.string.review_undo_failed)
+        null -> null
+    }
     val undo = stringResource(R.string.review_undo)
+    val offerUndo = notice is ReviewNotice.Kept
     LaunchedEffect(notice) {
         val text = message ?: return@LaunchedEffect
         val result = hostState.showSnackbar(
             message = text,
-            actionLabel = undo,
-            duration = SnackbarDuration.Indefinite,
+            actionLabel = if (offerUndo) undo else null,
+            duration = if (offerUndo) SnackbarDuration.Indefinite else SnackbarDuration.Long,
         )
         if (result == SnackbarResult.ActionPerformed) onUndoKeep() else onDismissKeepNotice()
     }

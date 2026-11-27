@@ -204,7 +204,7 @@ class ReviewViewModelTest {
         )
         assertEquals(listOf(2L), ids(viewModel))
         assertTrue(viewModel.selection.value.isEmpty())
-        assertEquals(2, viewModel.keepNotice.value!!.count)
+        assertEquals(2, (viewModel.keepNotice.value as ReviewNotice.Kept).count)
         assertEquals(ReviewStatus.Kept, upstream.value.first { it.mediaStoreId == 1L }.reviewStatus)
         assertEquals(ReviewStatus.Pending, upstream.value.first { it.mediaStoreId == 2L }.reviewStatus)
 
@@ -233,7 +233,7 @@ class ReviewViewModelTest {
 
         assertEquals(listOf(MediaKey(MediaType.Image, 9)), decisions.kept.single())
         assertEquals(listOf(8L), ids(viewModel))
-        assertEquals(1, viewModel.keepNotice.value!!.count)
+        assertEquals(1, (viewModel.keepNotice.value as ReviewNotice.Kept).count)
         viewModel.keepSelected()
         assertEquals(1, decisions.kept.size)
     }
@@ -247,6 +247,81 @@ class ReviewViewModelTest {
         assertTrue(decisions.kept.isEmpty())
         assertNull(viewModel.keepNotice.value)
         assertEquals(listOf(1L), ids(viewModel))
+    }
+
+    @Test
+    fun aFailedKeepLeavesTheSelectionAndDoesNotShowKept() = runTest {
+        val upstream = MutableStateFlow(
+            listOf(
+                row(id = 1, category = ScanCategory.Screenshot),
+                row(id = 2, category = ScanCategory.Screenshot),
+            ),
+        )
+        val decisions = ThrowingDecisions(upstream, keepError = IllegalStateException("disk full"))
+        val viewModel = viewModel(ScanCategory.Screenshot, upstream, decisions)
+        viewModel.startSelection(item(viewModel, 1))
+        viewModel.toggleSelection(item(viewModel, 2))
+        viewModel.keepSelected()
+
+        assertEquals(setOf("Image:1", "Image:2"), viewModel.selection.value)
+        assertEquals(ReviewNotice.KeepFailed, viewModel.keepNotice.value)
+        assertTrue(viewModel.keepNotice.value !is ReviewNotice.Kept)
+        assertEquals(listOf(1L, 2L), ids(viewModel))
+        assertTrue(upstream.value.all { row -> row.reviewStatus == ReviewStatus.Pending })
+    }
+
+    @Test
+    fun aFailedUndoLeavesTheRowsKept() = runTest {
+        val upstream = MutableStateFlow(
+            listOf(
+                row(id = 4, category = ScanCategory.People),
+                row(id = 5, category = ScanCategory.People),
+            ),
+        )
+        val decisions = ThrowingDecisions(upstream, undoError = IllegalStateException("disk full"))
+        val viewModel = viewModel(ScanCategory.People, upstream, decisions)
+        viewModel.startSelection(item(viewModel, 4))
+        viewModel.keepSelected()
+        assertEquals(listOf(5L), ids(viewModel))
+        assertTrue(viewModel.keepNotice.value is ReviewNotice.Kept)
+
+        viewModel.undoKeep()
+
+        assertEquals(ReviewNotice.UndoFailed, viewModel.keepNotice.value)
+        assertEquals(listOf(5L), ids(viewModel))
+        assertEquals(ReviewStatus.Kept, upstream.value.first { it.mediaStoreId == 4L }.reviewStatus)
+        assertTrue(viewModel.selection.value.isEmpty())
+    }
+
+    @Test
+    fun aCancelledKeepIsNotReportedAsADatabaseFailure() = runTest {
+        val upstream = MutableStateFlow(listOf(row(id = 1, category = ScanCategory.Screenshot)))
+        val decisions = ThrowingDecisions(upstream, keepError = kotlinx.coroutines.CancellationException("stopped"))
+        val viewModel = viewModel(ScanCategory.Screenshot, upstream, decisions)
+        viewModel.startSelection(item(viewModel, 1))
+        viewModel.keepSelected()
+
+        assertEquals(setOf("Image:1"), viewModel.selection.value)
+        assertNull(viewModel.keepNotice.value)
+        assertEquals(ReviewStatus.Pending, upstream.value.single().reviewStatus)
+    }
+
+    @Test
+    fun aCancelledUndoIsNotReportedAsADatabaseFailure() = runTest {
+        val upstream = MutableStateFlow(listOf(row(id = 6, category = ScanCategory.Screenshot)))
+        val decisions = ThrowingDecisions(
+            upstream,
+            undoError = kotlinx.coroutines.CancellationException("stopped"),
+        )
+        val viewModel = viewModel(ScanCategory.Screenshot, upstream, decisions)
+        viewModel.startSelection(item(viewModel, 6))
+        viewModel.keepSelected()
+        val kept = viewModel.keepNotice.value
+        viewModel.undoKeep()
+
+        assertEquals(kept, viewModel.keepNotice.value)
+        assertEquals(ReviewStatus.Kept, upstream.value.single().reviewStatus)
+        assertTrue(viewModel.keepNotice.value is ReviewNotice.Kept)
     }
 
     private fun viewModel(
@@ -288,6 +363,33 @@ class ReviewCategoryTest {
 private object NoDecisions : ReviewDecisions {
     override suspend fun markKept(keys: Collection<MediaKey>) = Unit
     override suspend fun markPending(keys: Collection<MediaKey>) = Unit
+}
+
+/**
+ * Same list updates as [RecordingDecisions], except [keepError] or [undoError]
+ * is thrown instead of writing. A null error uses the normal status update.
+ */
+private class ThrowingDecisions(
+    private val rows: MutableStateFlow<List<ScanResult>>,
+    private val keepError: Exception? = null,
+    private val undoError: Exception? = null,
+) : ReviewDecisions {
+    override suspend fun markKept(keys: Collection<MediaKey>) {
+        keepError?.let { error -> throw error }
+        setStatus(keys, ReviewStatus.Kept)
+    }
+
+    override suspend fun markPending(keys: Collection<MediaKey>) {
+        undoError?.let { error -> throw error }
+        setStatus(keys, ReviewStatus.Pending)
+    }
+
+    private fun setStatus(keys: Collection<MediaKey>, status: ReviewStatus) {
+        val selected = keys.toSet()
+        rows.value = rows.value.map { row ->
+            if (row.key in selected) row.copy(reviewStatus = status) else row
+        }
+    }
 }
 
 /**

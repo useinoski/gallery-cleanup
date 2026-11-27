@@ -259,7 +259,7 @@ class ReviewScreenTest {
                     state = ReviewUiState.Empty,
                     onBack = {},
                     thumbnails = ThumbnailLoader { _, _ -> bitmap },
-                    keepNotice = KeepNotice(
+                    keepNotice = ReviewNotice.Kept(
                         listOf(MediaKey(MediaType.Image, 1), MediaKey(MediaType.Image, 2)),
                     ),
                     onUndoKeep = { undone = true },
